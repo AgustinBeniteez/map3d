@@ -1,4 +1,4 @@
-package com.example.voxelview3d.client;
+package com.agustinbenitez.voxelview3d.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -144,10 +144,27 @@ public class CompassHud implements IGuiOverlay {
             int x = (int)(centerX + offset);
             int y = topY + 1; // Slightly higher
             
-            // Draw a diamond or rect with FULL ALPHA
-            guiGraphics.fill(x - 2, y, x + 2, y + 4, wp.color | 0xFF000000);
+            // Draw Icon instead of colored rect
+            ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+            RenderSystem.setShaderTexture(0, iconLoc);
             
-            // Optional: Draw beam-like vertical line if desired, but kept simple for HUD
+            int iconSize = 10;
+            // Draw icon centered at x
+            guiGraphics.blit(iconLoc, x - iconSize/2, y, iconSize, iconSize, 0, 0, 16, 16, 16, 16);
+            
+            // Draw text BELOW the marker
+            // Scale down text to fit better
+            PoseStack pose = guiGraphics.pose();
+            pose.pushPose();
+            float scale = 0.5f;
+            // Move text down (y + 12) to be below icon (icon is 10px)
+            pose.translate(x, y + 12, 0);
+            pose.scale(scale, scale, 1.0f);
+            
+            int textWidth = Minecraft.getInstance().font.width(wp.name);
+            guiGraphics.drawString(Minecraft.getInstance().font, wp.name, -textWidth / 2, 0, 0xFFFFFFFF, false);
+            
+            pose.popPose();
         }
     }
     

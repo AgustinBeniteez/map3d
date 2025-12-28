@@ -1,4 +1,4 @@
-package com.example.voxelview3d.client;
+package com.agustinbenitez.voxelview3d.client;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,14 +15,16 @@ public class ClientSettings {
         public String name;
         public int x, y, z;
         public int color;
+        public String iconName; // e.g. "icon1"
         public boolean visible = true;
 
-        public Waypoint(String name, int x, int y, int z, int color) {
+        public Waypoint(String name, int x, int y, int z, int color, String iconName) {
             this.name = name;
             this.x = x;
             this.y = y;
             this.z = z;
             this.color = color;
+            this.iconName = (iconName == null || iconName.isEmpty()) ? "icon1" : iconName;
         }
     }
 }

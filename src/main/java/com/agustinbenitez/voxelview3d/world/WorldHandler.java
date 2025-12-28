@@ -1,6 +1,5 @@
-package com.example.voxelview3d.world;
+package com.agustinbenitez.voxelview3d.world;
 
-import com.example.voxelview3d.VoxelView3D;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkStatus;
@@ -14,6 +13,8 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
+
+import com.agustinbenitez.voxelview3d.VoxelView3D;
 
 @Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
 public class WorldHandler {

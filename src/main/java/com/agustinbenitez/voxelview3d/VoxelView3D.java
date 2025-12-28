@@ -1,7 +1,7 @@
-package com.example.voxelview3d;
+package com.agustinbenitez.voxelview3d;
 
-import com.example.voxelview3d.client.CompassHud;
-import com.example.voxelview3d.client.KeyBindings;
+import com.agustinbenitez.voxelview3d.client.CompassHud;
+import com.agustinbenitez.voxelview3d.client.KeyBindings;
 import com.mojang.logging.LogUtils;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;

@@ -1,6 +1,6 @@
-package com.example.voxelview3d.client;
+package com.agustinbenitez.voxelview3d.client;
 
-import com.example.voxelview3d.world.ChunkScanner;
+import com.agustinbenitez.voxelview3d.world.ChunkScanner;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Axis;
@@ -184,6 +184,32 @@ public class VoxelMapRenderer {
                 float scale = 0.15f; // Slightly larger text
                 poseStack.scale(scale, -scale, scale);
                 
+                // Disable depth test to ensure text/icon is always visible (on top of beam and blocks)
+                RenderSystem.disableDepthTest();
+
+                // --- Draw Icon ---
+                ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+                RenderSystem.setShader(GameRenderer::getPositionTexShader);
+                RenderSystem.setShaderTexture(0, iconLoc);
+                
+                // Draw Icon Quad
+                float iconSize = 16.0f; // Size in local scaled units
+                float iconY = -2.0f; // Slightly above text
+                
+                // We need a new buffer for the icon
+                Tesselator tessIcon = Tesselator.getInstance();
+                BufferBuilder bufIcon = tessIcon.getBuilder();
+                bufIcon.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+                Matrix4f matrix = poseStack.last().pose();
+                
+                bufIcon.vertex(matrix, -iconSize/2, iconY - iconSize, 0).uv(0, 0).endVertex();
+                bufIcon.vertex(matrix, -iconSize/2, iconY, 0).uv(0, 1).endVertex();
+                bufIcon.vertex(matrix, iconSize/2, iconY, 0).uv(1, 1).endVertex();
+                bufIcon.vertex(matrix, iconSize/2, iconY - iconSize, 0).uv(1, 0).endVertex();
+                
+                BufferUploader.drawWithShader(bufIcon.end());
+                // -----------------
+
                 int textWidth = Minecraft.getInstance().font.width(wp.name);
                 int halfWidth = textWidth / 2;
                 
@@ -191,8 +217,12 @@ public class VoxelMapRenderer {
                 // Use fill (we need to access Tesselator or just use standard GuiGraphics fill? 
                 // We are in 3D context, so drawInBatch handles it, but background requires a separate quad or font options.
                 // drawInBatch has backgroundColor param (the last int).
+                // Use SEE_THROUGH to match depth disabled state
                 
-                Minecraft.getInstance().font.drawInBatch(wp.name, -halfWidth, 0, 0xFFFFFFFF, false, poseStack.last().pose(), Minecraft.getInstance().renderBuffers().bufferSource(), Font.DisplayMode.NORMAL, 0x40000000, 15728880);
+                Minecraft.getInstance().font.drawInBatch(wp.name, -halfWidth, 0, 0xFFFFFFFF, false, poseStack.last().pose(), Minecraft.getInstance().renderBuffers().bufferSource(), Font.DisplayMode.SEE_THROUGH, 0x40000000, 15728880);
+                
+                // Re-enable depth test
+                RenderSystem.enableDepthTest();
                 
                 poseStack.popPose();
             }
@@ -298,21 +328,35 @@ public class VoxelMapRenderer {
             // "Exterior Darker" Logic:
             // If underground, apply distance-based fog/dimming to simulate lighting
             float brightness = 1.0f;
+            float alpha = 1.0f;
+
             if (isUnderground) {
                 // Distance squared
                 double distSq = rx * rx + ry * ry + rz * rz;
+                double dist = Math.sqrt(distSq);
+
+                // Brightness (Fog): Darken blocks far away
                 // Fade start at 6 blocks, fully dark at 16 blocks?
                 double maxDist = 16.0;
                 if (distSq > 36.0) { // Start fading after 6 blocks
-                    double dist = Math.sqrt(distSq);
                     double fade = 1.0 - ((dist - 6.0) / (maxDist - 6.0));
                     brightness = (float) Math.max(0.3, Math.min(1.0, fade)); // Min brightness 0.3
                 }
-            }
-            
-            float alpha = 1.0f;
-            if (isUnderground) {
-                alpha = 0.4f;
+
+                // Transparency: Make nearby blocks transparent so we can see through walls
+                // User request: "transparenté lo que este cerca no todo"
+                double transStart = 2.0;
+                double transEnd = 8.0;
+
+                if (dist < transStart) {
+                    alpha = 0.3f;
+                } else if (dist > transEnd) {
+                    alpha = 1.0f;
+                } else {
+                    // Interpolate from 0.3 to 1.0
+                    double t = (dist - transStart) / (transEnd - transStart);
+                    alpha = (float) (0.3 + t * 0.7);
+                }
             }
 
             // Render block as a box (1.0 size for solid terrain)
@@ -346,10 +390,13 @@ public class VoxelMapRenderer {
             double rz = e.getZ() - centerZ;
             
             if (e instanceof Monster) {
+                if (!ClientSettings.showEnemies) continue;
                 renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.6f, 1.8f, 0.6f, 1.0f, 0.0f, 0.0f, 1.0f);
             } else if (e instanceof Villager) {
+                if (!ClientSettings.showVillagers) continue;
                 renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.6f, 1.8f, 0.6f, 0.6f, 0.4f, 0.3f, 1.0f);
             } else if (e instanceof Animal) {
+                if (!ClientSettings.showAnimals) continue;
                 renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f);
             }
         }
@@ -359,6 +406,7 @@ public class VoxelMapRenderer {
         // Iterate all players to find client player or others
         for (Entity e : entities) {
             if (e instanceof AbstractClientPlayer) {
+                if (!ClientSettings.showPlayers) continue;
                 AbstractClientPlayer p = (AbstractClientPlayer) e;
                 if (p == player) { // Only render self for now as per request "tu personaje"
                      renderPlayerHead(poseStack, p, centerX, centerZ, centerY);

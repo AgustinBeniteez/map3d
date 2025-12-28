@@ -1,6 +1,6 @@
-package com.example.voxelview3d.client;
+package com.agustinbenitez.voxelview3d.client;
 
-import com.example.voxelview3d.world.ChunkScanner;
+import com.agustinbenitez.voxelview3d.world.ChunkScanner;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;

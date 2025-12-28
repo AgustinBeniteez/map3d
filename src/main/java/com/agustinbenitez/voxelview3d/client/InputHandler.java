@@ -1,6 +1,7 @@
-package com.example.voxelview3d.client;
+package com.agustinbenitez.voxelview3d.client;
 
-import com.example.voxelview3d.VoxelView3D;
+import com.agustinbenitez.voxelview3d.VoxelView3D;
+
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.TickEvent;

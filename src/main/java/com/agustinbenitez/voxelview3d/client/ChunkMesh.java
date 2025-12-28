@@ -1,4 +1,4 @@
-package com.example.voxelview3d.client;
+package com.agustinbenitez.voxelview3d.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;

@@ -1,4 +1,4 @@
-package com.example.voxelview3d.world;
+package com.agustinbenitez.voxelview3d.world;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
