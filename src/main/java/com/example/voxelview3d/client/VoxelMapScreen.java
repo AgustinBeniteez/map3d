@@ -28,9 +28,9 @@ public class VoxelMapScreen extends Screen {
     // Camera controls
     private double camX = 0;
     private double camZ = 0;
-    private float zoom = 1.0f; // Start with a safe zoom level
+    private float zoom = 3.0f; // Start closer
     private float cameraYaw = 45.0f;
-    private float cameraPitch = 45.0f;
+    private final float cameraPitch = 45.0f; // Fixed pitch
     private int cutY = 320; // Max height
 
     public VoxelMapScreen() {
@@ -90,21 +90,18 @@ public class VoxelMapScreen extends Screen {
         poseStack.pushPose();
         
         // Center on screen
-        // Move deeper into Z to avoid near-plane clipping
-        // Map radius ~160 blocks. At zoom 2.0, that's 320 units.
-        // We need Z > 320 to avoid clipping when rotating.
         poseStack.translate(this.width / 2.0, this.height / 2.0, 600);
         
         // Fix coordinate system: GUI Y is down, World Y is up.
-        // We flip Y to match world coordinates visually
         poseStack.scale(zoom, -zoom, zoom);
         
         poseStack.mulPose(Axis.XP.rotationDegrees(cameraPitch));
         poseStack.mulPose(Axis.YP.rotationDegrees(cameraYaw));
         
-        // Translate camera offset
-        poseStack.translate(-camX, 0, -camZ);
-
+        // Lock camera to player (no manual panning)
+        // camX and camZ are ignored or reset to 0 effectively by not applying them
+        // or we can keep them if we want to allow temporary panning, but user said "tu en el centro"
+        
         // Enable Depth Test for 3D rendering
         RenderSystem.enableDepthTest();
         RenderSystem.depthFunc(515); // GL11.GL_LEQUAL = 515
@@ -116,7 +113,6 @@ public class VoxelMapScreen extends Screen {
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
         
         // Draw a debug axis marker at the center (Player position)
-        // Red = X, Green = Y, Blue = Z
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
@@ -135,28 +131,25 @@ public class VoxelMapScreen extends Screen {
         BufferUploader.drawWithShader(renderedBuffer);
 
         if (Minecraft.getInstance().player != null) {
-            ChunkPos playerChunk = Minecraft.getInstance().player.chunkPosition();
-            // Use camera variables for center if they are updated by controls, 
-            // but initially center on player.
-            // Actually, camX/camZ should probably be offsets from player or absolute world coords.
-            // Let's treat camX/camZ as offsets from player position for now to keep it simple, 
-            // OR absolute coords. Let's make them relative to player start or current player pos.
+            Player player = Minecraft.getInstance().player;
+            ChunkPos playerChunk = player.chunkPosition();
             
-            // Current implementation:
-            // rx = chunk.x*16 - centerX
-            // centerX = playerChunk.x*16 + 8
-            // So 0,0 is player position.
-            
-            // camX, camZ are added to translation.
-            
-            double centerX = playerChunk.x * 16 + 8;
-            double centerZ = playerChunk.z * 16 + 8;
-            double centerY = Minecraft.getInstance().player.getY();
+            // Center strictly on player exact position
+            double centerX = player.getX();
+            double centerZ = player.getZ();
+            double centerY = player.getY();
 
             Map<ChunkPos, ChunkScanner.ScannedChunk> data = ChunkScanner.getData();
 
             for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
                 ChunkPos cp = entry.getKey();
+                
+                // Horizontal Distance Check: Only show chunks within ~2 chunks radius (32 blocks)
+                // "Solo la parte cercana a ti"
+                if (Math.abs(cp.x - playerChunk.x) > 2 || Math.abs(cp.z - playerChunk.z) > 2) {
+                    continue;
+                }
+                
                 if (!meshCache.containsKey(cp)) {
                     buildMesh(cp, entry.getValue());
                 }
@@ -165,17 +158,24 @@ public class VoxelMapScreen extends Screen {
                 if (mesh != null) {
                     poseStack.pushPose();
                     // Translate to chunk relative position
+                    // We want (px, py, pz) to be at (0,0,0) in view
+                    // Chunk starts at cp.x*16, cp.z*16
+                    // Block at cx, cy, cz in world:
+                    // ViewPos = (cx - playerX), (cy - playerY), (cz - playerZ)
+                    
                     float rx = (float)(cp.x * 16 - centerX);
                     float rz = (float)(cp.z * 16 - centerZ);
                     float ry = (float)(-centerY); 
                     
                     poseStack.translate(rx, ry, rz);
                     
-                    // We need to pass the ModelView matrix (poseStack) and Projection matrix separately
                     mesh.draw(poseStack.last().pose(), RenderSystem.getProjectionMatrix());
                     poseStack.popPose();
                 }
             }
+            
+            // Render entities relative to player (which is 0,0,0)
+            renderEntities(poseStack, centerX, centerZ, centerY);
         }
         
         poseStack.popPose();
@@ -187,7 +187,7 @@ public class VoxelMapScreen extends Screen {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (button == 0) { // Left click
             cameraYaw += dragX;
-            cameraPitch += dragY;
+            // cameraPitch += dragY; // Pitch locked
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -314,6 +314,11 @@ public class VoxelMapScreen extends Screen {
         int[] packedPositions = data.packedPositions;
         int[] colors = data.colors;
         
+        int playerY = 0;
+        if (Minecraft.getInstance().player != null) {
+            playerY = Minecraft.getInstance().player.getBlockY();
+        }
+        
         if (packedPositions != null) {
             for (int i = 0; i < packedPositions.length; i++) {
                 int packed = packedPositions[i];
@@ -324,20 +329,12 @@ public class VoxelMapScreen extends Screen {
                 int z = (packed >> 4) & 0xF;
                 int relY = (packed >> 8) & 0x1FF;
                 
-                // Convert relative Y back to absolute world Y?
-                // Actually, VoxelMapScreen needs to know minBuildHeight to render correctly relative to 0.
-                // But wait, the previous implementation used absolute Y.
-                // Let's assume we need to pass minBuildHeight or assume standard -64.
-                // Or better: store minBuildHeight in ScannedChunk.
-                // For now, let's assume -64 is the base (1.18+).
-                // relY = worldY - minBuildHeight -> worldY = relY + minBuildHeight
-                // But we don't have minBuildHeight here easily.
-                // Let's fix this by storing absolute Y in the packing? 
-                // 9 bits is 512. World range is 384. 
-                // If we store (y + 64), we cover -64 to 448.
-                // Let's assume standard overworld for now (-64).
-                
+                // Assume standard overworld for now (-64).
                 int h = relY - 64; 
+                
+                // Vertical Range Check (PlayerY +/- 10)
+                // "Que pase lo mismo con la altura" -> Hide blocks far from player vertically
+                if (h < playerY - 10 || h > playerY + 10) continue;
                 
                 if (h > cutY) continue; 
                 
