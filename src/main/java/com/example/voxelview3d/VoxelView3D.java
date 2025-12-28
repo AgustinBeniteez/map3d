@@ -1,8 +1,10 @@
 package com.example.voxelview3d;
 
+import com.example.voxelview3d.client.CompassHud;
 import com.example.voxelview3d.client.KeyBindings;
 import com.mojang.logging.LogUtils;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.server.ServerStartingEvent;
@@ -46,6 +48,11 @@ public class VoxelView3D {
         @SubscribeEvent
         public static void registerKeys(RegisterKeyMappingsEvent event) {
             event.register(KeyBindings.OPEN_MAP_KEY);
+        }
+
+        @SubscribeEvent
+        public static void registerOverlays(RegisterGuiOverlaysEvent event) {
+            event.registerAboveAll("compass_hud", CompassHud.INSTANCE);
         }
     }
 }

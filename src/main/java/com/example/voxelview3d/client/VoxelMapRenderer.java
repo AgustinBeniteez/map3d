@@ -5,6 +5,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
@@ -14,6 +15,7 @@ import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.levelgen.Heightmap;
 import org.joml.Matrix4f;
 
 import java.util.Map;
@@ -29,8 +31,12 @@ public class VoxelMapRenderer {
         // Setup 3D Rendering State
         RenderSystem.enableDepthTest();
         RenderSystem.depthFunc(515); // GL_LEQUAL
-        RenderSystem.disableCull();
+        RenderSystem.enableCull(); // Enable Cull to avoid seeing backfaces and reduce visual noise
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+        
+        // Enable Blending for transparency
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
         
         poseStack.pushPose();
         
@@ -60,7 +66,27 @@ public class VoxelMapRenderer {
             int playerY = player.getBlockY();
             boolean canSeeSky = mc.level.canSeeSky(player.blockPosition());
             
+            // Underground if can't see sky OR if deep in a hole (surface is significantly higher)
             isUnderground = !canSeeSky;
+            
+            if (!isUnderground) {
+                 int x = player.getBlockX();
+                 int z = player.getBlockZ();
+                 
+                 // Check surrounding height (3x3 area around player)
+                 // If average surrounding height is significantly higher than playerY, we are in a hole/trench
+                 int h1 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x + 2, z);
+                 int h2 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x - 2, z);
+                 int h3 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z + 2);
+                 int h4 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z - 2);
+                 
+                 int avgSurrounding = (h1 + h2 + h3 + h4) / 4;
+                 
+                 // If player is > 3 blocks below the surrounding terrain, treat as underground (transparency)
+                 if (playerY < avgSurrounding - 3) {
+                     isUnderground = true;
+                 }
+            }
             
             if (isUnderground) {
                 // Cave Mode: Strict vertical limits to see player inside
@@ -81,6 +107,9 @@ public class VoxelMapRenderer {
         
         // Render Entities
         renderEntities(poseStack, player, renderMinY, renderMaxY);
+
+        // Render Waypoints
+        renderWaypoints(poseStack, player, cameraYaw, cameraPitch);
         
         poseStack.popPose();
         
@@ -89,181 +118,87 @@ public class VoxelMapRenderer {
         RenderSystem.disableDepthTest();
     }
 
-    public static void renderMinimap2D(PoseStack poseStack, float zoom, float cameraYaw, int renderRadius) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
+    private static void renderWaypoints(PoseStack poseStack, Player player, float cameraYaw, float cameraPitch) {
+        if (ClientSettings.waypoints.isEmpty()) return;
         
-        Player player = mc.player;
-        
-        // Setup 2D Rendering State
-        // Use Depth Test to allow higher blocks to cover lower blocks
-        RenderSystem.enableDepthTest();
-        RenderSystem.depthFunc(515); // GL_LEQUAL
-        RenderSystem.disableCull();
-        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
-        
-        poseStack.pushPose();
-        
-        // Scale
-        poseStack.scale(zoom, zoom, 1.0f);
-        // Rotate (Map rotation)
-        poseStack.mulPose(Axis.ZP.rotationDegrees(cameraYaw));
-        
-        ClientMapData clientData = ClientMapData.getInstance();
-        int cutY = clientData.getCutY();
-        int minBuildHeight = mc.level != null ? mc.level.getMinBuildHeight() : -64;
-        
-        // Calculate Vertical Culling Bounds (Same logic as 3D)
-        int renderMinY = minBuildHeight;
-        int renderMaxY = cutY;
-        boolean isUnderground = false;
-        
-        if (mc.level != null) {
-            int playerY = player.getBlockY();
-            boolean canSeeSky = mc.level.canSeeSky(player.blockPosition());
-            
-            isUnderground = !canSeeSky;
-            
-            if (isUnderground) {
-                renderMinY = Math.max(minBuildHeight, playerY - 16); 
-                renderMaxY = Math.min(cutY, playerY + 1);
-            } else {
-                renderMinY = Math.max(minBuildHeight, Math.min(playerY - 32, 60));
-            }
-        }
-        
-        // Render Chunks 2D
-        renderChunks2D(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY, isUnderground);
-        
-        // Render Player Marker (2D Arrow)
-        renderPlayerMarker2D(poseStack);
-        
-        poseStack.popPose();
-        
-        RenderSystem.disableDepthTest();
-    }
-    
-    private static void renderChunks2D(PoseStack poseStack, Player player, int radius, int minBuildHeight, int renderMinY, int renderMaxY, boolean isUnderground) {
         double centerX = player.getX();
         double centerZ = player.getZ();
         double centerY = player.getY();
         
-        ChunkPos playerChunk = player.chunkPosition();
-        Map<ChunkPos, ChunkScanner.ScannedChunk> data = ChunkScanner.getData();
-        
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         
-        Matrix4f pose = poseStack.last().pose();
-        
-        // Optimized loop: only iterate nearby chunks
-        for (int x = -radius; x <= radius; x++) {
-            for (int z = -radius; z <= radius; z++) {
-                 ChunkPos cp = new ChunkPos(playerChunk.x + x, playerChunk.z + z);
-                 ChunkScanner.ScannedChunk chunkData = data.get(cp);
-                 if (chunkData != null) {
-                     buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-                     renderChunkBlocks2D(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
-                     BufferUploader.drawWithShader(buf.end());
-                 }
-            }
-        }
-    }
-    
-    private static void renderChunkBlocks2D(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground) {
-        int[] packedPositions = chunkData.packedPositions;
-        int[] colors = chunkData.colors;
-        
-        if (packedPositions == null) return;
-        
-        for (int i = 0; i < packedPositions.length; i++) {
-            int packed = packedPositions[i];
-            int color = colors[i];
+        for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
+            if (!wp.visible) continue;
             
-            int x = packed & 0xF;
-            int z = (packed >> 4) & 0xF;
-            int relY = (packed >> 8) & 0x1FF;
+            double rx = wp.x + 0.5 - centerX;
+            double rz = wp.z + 0.5 - centerZ;
             
-            int h = relY + minBuildHeight;
+            // Draw Beam (Infinite Vertical)
+            // We draw a very tall box centered vertically around the player (y=0 relative)
+            // This ensures it looks like it goes from bottom to top of the world
+            double beamHeight = 2048.0; 
+            double beamY = 0; // Relative to camera (which is 0)
             
-            if (h < minY || h > maxY) continue;
+            // Calculate distance for fading
+            double distSq = rx*rx + rz*rz;
+            float maxFadeDist = 3.0f; // blocks
+            float alpha = 0.8f;
             
-            // 2D Projection: Map World (X, Z) to Screen (X, Y)
-            double rx = (cp.x * 16 + x) + 0.5 - centerX;
-            double rz = (cp.z * 16 + z) + 0.5 - centerZ;
-            
-            // Use relative height for Z-layering (so higher blocks cover lower ones)
-            // Scale height difference to small Z range to fit in depth buffer
-            double heightDiff = h - centerY;
-            double zLayer = heightDiff * 0.01; // Scale down
-            
-            int r = (color >> 16) & 0xFF;
-            int g = (color >> 8) & 0xFF;
-            int b = color & 0xFF;
-            
-            // Dimming Logic
-            float brightness = 1.0f;
-            if (isUnderground) {
-                double distSq = rx * rx + rz * rz; // 2D distance
-                double maxDist = 16.0;
-                if (distSq > 36.0) { 
-                    double dist = Math.sqrt(distSq);
-                    double fade = 1.0 - ((dist - 6.0) / (maxDist - 6.0));
-                    brightness = (float) Math.max(0.3, Math.min(1.0, fade));
-                }
+            if (distSq < maxFadeDist * maxFadeDist) {
+                double dist = Math.sqrt(distSq);
+                alpha = (float) (dist / maxFadeDist) * 0.8f;
+                if (alpha < 0.1f) alpha = 0.05f; // almost invisible
             }
             
-            // Draw 2D Quad (1x1 unit)
-            // X -> rx, Y -> rz
-            renderQuad2D(buf, pose, rx, rz, zLayer, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, 1.0f);
+            buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+            
+            int color = wp.color;
+            float r = ((color >> 16) & 0xFF) / 255.0f;
+            float g = ((color >> 8) & 0xFF) / 255.0f;
+            float b = (color & 0xFF) / 255.0f;
+            
+            // Inner beam (thinner, more opaque)
+            float wInner = 0.2f; 
+            renderBox(buf, poseStack.last().pose(), rx, beamY, rz, wInner, (float)beamHeight, wInner, r, g, b, alpha);
+            
+            // Outer beam (wider, more transparent)
+            float wOuter = 0.6f;
+            renderBox(buf, poseStack.last().pose(), rx, beamY, rz, wOuter, (float)beamHeight, wOuter, r, g, b, alpha * 0.3f);
+            
+            BufferUploader.drawWithShader(buf.end());
+            
+            // Draw Name Tag
+            // Position name tag slightly above the waypoint's actual Y coordinate, or above player if far?
+            // Let's keep it at the waypoint's Y coordinate so you know its altitude
+            double ry = wp.y - centerY; 
+            
+            if (alpha > 0.2f) { // Only show name if beam is somewhat visible
+                poseStack.pushPose();
+                poseStack.translate(rx, ry + 2.5, rz);
+                // Billboard effect
+                poseStack.mulPose(Axis.YP.rotationDegrees(-cameraYaw));
+                poseStack.mulPose(Axis.XP.rotationDegrees(-cameraPitch));
+                
+                float scale = 0.15f; // Slightly larger text
+                poseStack.scale(scale, -scale, scale);
+                
+                int textWidth = Minecraft.getInstance().font.width(wp.name);
+                int halfWidth = textWidth / 2;
+                
+                // Draw background for text for better readability
+                // Use fill (we need to access Tesselator or just use standard GuiGraphics fill? 
+                // We are in 3D context, so drawInBatch handles it, but background requires a separate quad or font options.
+                // drawInBatch has backgroundColor param (the last int).
+                
+                Minecraft.getInstance().font.drawInBatch(wp.name, -halfWidth, 0, 0xFFFFFFFF, false, poseStack.last().pose(), Minecraft.getInstance().renderBuffers().bufferSource(), Font.DisplayMode.NORMAL, 0x40000000, 15728880);
+                
+                poseStack.popPose();
+            }
         }
     }
 
-    private static void renderQuad2D(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float size, float r, float g, float b, float a) {
-        float minX = (float)(x - size/2);
-        float maxX = (float)(x + size/2);
-        float minY = (float)(y - size/2);
-        float maxY = (float)(y + size/2);
-        float depth = (float)z;
-        
-        int red = (int)(r * 255);
-        int green = (int)(g * 255);
-        int blue = (int)(b * 255);
-        int alpha = (int)(a * 255);
-        
-        // Flat Quad
-        buf.vertex(pose, minX, maxY, depth).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, depth).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, depth).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, depth).color(red, green, blue, alpha).endVertex();
-    }
-    
-    private static void renderPlayerMarker2D(PoseStack poseStack) {
-        // Draw a simple red arrow or triangle in center
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        buf.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.POSITION_COLOR);
-        
-        Matrix4f pose = poseStack.last().pose();
-        
-        // Z-layer above map
-        float z = 1.0f;
-        
-        // Triangle pointing UP (since map rotates, player is always UP relative to map if we rotate map)
-        // BUT wait:
-        // If we rotate map by -playerYaw, then the world rotates, and player stays fixed UP.
-        // Yes, that's how minimaps usually work.
-        
-        // Size 2.0
-        buf.vertex(pose, 0, -2, z).color(255, 0, 0, 255).endVertex(); // Top (Forward in screen Y is -Y? No, standard GUI Y is Down. So -Y is Up.)
-        buf.vertex(pose, -1.5f, 2, z).color(255, 0, 0, 255).endVertex(); // Bottom Left
-        buf.vertex(pose, 1.5f, 2, z).color(255, 0, 0, 255).endVertex(); // Bottom Right
-        
-        BufferUploader.drawWithShader(buf.end());
-    }
-    
     private static void drawAxis(PoseStack poseStack) {
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
@@ -375,8 +310,13 @@ public class VoxelMapRenderer {
                 }
             }
             
+            float alpha = 1.0f;
+            if (isUnderground) {
+                alpha = 0.4f;
+            }
+
             // Render block as a box (1.0 size for solid terrain)
-            renderBox(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, 1.0f);
+            renderBox(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
         }
     }
     
@@ -445,7 +385,7 @@ public class VoxelMapRenderer {
         BufferUploader.drawWithShader(buf.end());
     }
 
-    private static void renderBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float r, float g, float b, float a) {
+    public static void renderBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float r, float g, float b, float a) {
         float minX = (float)(x - w/2);
         float maxX = (float)(x + w/2);
         float minY = (float)y;
