@@ -10,12 +10,14 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Queue;
 
 @Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
 public class WorldHandler {
-    private static int tickCounter = 0;
+    private static int tickCounter = 40; // Start immediately
     private static final Queue<ChunkPos> scanQueue = new LinkedList<>();
 
     @SubscribeEvent
@@ -23,14 +25,15 @@ public class WorldHandler {
         if (event.phase == TickEvent.Phase.END && Minecraft.getInstance().level != null) {
             tickCounter++;
             
-            // Periodically refresh the scan queue (every 2 seconds)
-            if (tickCounter >= 40) {
+            // Periodically refresh the scan queue (every 1 second = 20 ticks)
+            // Faster refresh to respond to movement
+            if (tickCounter >= 20) {
                 tickCounter = 0;
                 refreshScanQueue();
             }
             
-            // Process scan queue (scan 2 chunks per tick to avoid lag)
-            processScanQueue(2);
+            // Process scan queue (scan 5 chunks per tick for faster updates)
+            processScanQueue(5);
         }
     }
 
@@ -39,13 +42,36 @@ public class WorldHandler {
         if (mc.player == null || mc.level == null) return;
 
         ChunkPos playerPos = mc.player.chunkPosition();
-        int radius = 10; // Scan radius
+        int radius = 16; // Increased radius
+        
+        // Prune old chunks first
+        ChunkScanner.prune(playerPos, radius + 2); // Keep a bit more than scan radius
 
+        // Clear existing queue to prioritize new position
+        scanQueue.clear();
+        
+        // Collect chunks in range
+        List<ChunkPos> chunks = new ArrayList<>();
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                scanQueue.offer(new ChunkPos(playerPos.x + x, playerPos.z + z));
+                chunks.add(new ChunkPos(playerPos.x + x, playerPos.z + z));
             }
         }
+        
+        // Sort by distance to player (closest first)
+        chunks.sort((c1, c2) -> {
+            double d1 = distSq(c1, playerPos);
+            double d2 = distSq(c2, playerPos);
+            return Double.compare(d1, d2);
+        });
+        
+        scanQueue.addAll(chunks);
+    }
+    
+    private static double distSq(ChunkPos c1, ChunkPos c2) {
+        double dx = c1.x - c2.x;
+        double dz = c1.z - c2.z;
+        return dx * dx + dz * dz;
     }
     
     private static void processScanQueue(int chunksToScan) {

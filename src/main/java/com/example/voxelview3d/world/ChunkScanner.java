@@ -48,7 +48,7 @@ public class ChunkScanner {
                 for (int x = 0; x < 16; x++) {
                     for (int z = 0; z < 16; z++) {
                         BlockState state = section.getBlockState(x, y, z);
-                        if (!state.isAir() && state.getFluidState().isEmpty()) { // Ignore fluids for now to see caves better
+                        if (!state.isAir()) { // Capture everything including fluids
                             // Check for exposure (culling hidden blocks)
                             // We check neighbors in the chunk. Cross-chunk checking is harder, so we might have artifacts at edges.
                             // But for map, it's okay.
@@ -73,6 +73,9 @@ public class ChunkScanner {
                             int surfaceHeight = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
                             if (worldY == surfaceHeight - 1) exposed = true;
 
+                            // DEBUG: Always expose non-air blocks for testing if exposure check is failing
+                            exposed = true; 
+
                             if (exposed) {
                                 // Pack Position: x (0-15), z (0-15), y (absolute)
                                 // We store Y relative to minBuildHeight to save bits? 
@@ -83,7 +86,20 @@ public class ChunkScanner {
                                 positions.add(packed);
                                 
                                 // Color
-                                int color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
+                                int color = 0;
+                                try {
+                                    color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
+                                } catch (Exception e) {
+                                    color = 0; // Fallback
+                                }
+                                
+                                // If color is 0 (transparent/black), try to get from block default
+                                if (color == 0) {
+                                     // Fallback color based on block hash or hardcoded
+                                     // color = state.getBlock().defaultMapColor().col; // Not available easily
+                                     color = 0xFF00FF; // Magenta debug
+                                }
+                                
                                 colors.add(color);
                             }
                         }
@@ -105,7 +121,8 @@ public class ChunkScanner {
             // For speed, let's assume boundary is exposed (draws faces between chunks, good for debug/map)
             return true;
         }
-        return section.getBlockState(x, y, z).isAir();
+        BlockState state = section.getBlockState(x, y, z);
+        return !state.canOcclude();
     }
     
     public static Map<ChunkPos, ScannedChunk> getData() {
@@ -114,5 +131,14 @@ public class ChunkScanner {
     
     public static void clear() {
         CHUNK_DATA.clear();
+    }
+    
+    public static void prune(ChunkPos center, int radius) {
+        CHUNK_DATA.entrySet().removeIf(entry -> {
+            ChunkPos pos = entry.getKey();
+            int dx = Math.abs(pos.x - center.x);
+            int dz = Math.abs(pos.z - center.z);
+            return dx > radius || dz > radius;
+        });
     }
 }
