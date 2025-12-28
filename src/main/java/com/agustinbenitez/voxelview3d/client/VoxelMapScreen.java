@@ -270,6 +270,9 @@ public class VoxelMapScreen extends Screen {
                     ClientSettings.waypoints.add(new ClientSettings.Waypoint(name, x, y, z, selectedColor, selectedIcon));
                 }
                 
+                // Save Waypoints
+                WaypointManager.saveWaypoints();
+                
                 // Clear and go back to list
                 waypointNameField.setValue("");
                 editingWaypoint = null;
@@ -336,6 +339,7 @@ public class VoxelMapScreen extends Screen {
                  if (mouseX >= rightEdge - 90 && mouseX < rightEdge - 70) {
                      // Toggle Visibility
                      wp.visible = !wp.visible;
+                     WaypointManager.saveWaypoints();
                      return true;
                  }
                  
@@ -350,6 +354,7 @@ public class VoxelMapScreen extends Screen {
                  if (mouseX >= rightEdge - 30 && mouseX < rightEdge - 10) {
                      // Delete
                      ClientSettings.waypoints.remove(clickedIndex);
+                     WaypointManager.saveWaypoints();
                      return true;
                  }
             }
@@ -370,6 +375,10 @@ public class VoxelMapScreen extends Screen {
         
         // Use shared renderer
         VoxelMapRenderer.renderMap(poseStack, zoom, cameraPitch, cameraYaw, false, 10);
+        
+        // Clear depth buffer to ensure UI draws cleanly on top of the 3D map
+        RenderSystem.depthMask(true);
+        RenderSystem.clear(256, Minecraft.ON_OSX);
         
         poseStack.popPose();
         

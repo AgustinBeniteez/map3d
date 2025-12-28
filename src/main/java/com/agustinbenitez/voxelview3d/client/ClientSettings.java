@@ -18,6 +18,8 @@ public class ClientSettings {
         public String iconName; // e.g. "icon1"
         public boolean visible = true;
 
+        public Waypoint() {}
+
         public Waypoint(String name, int x, int y, int z, int color, String iconName) {
             this.name = name;
             this.x = x;

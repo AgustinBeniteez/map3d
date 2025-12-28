@@ -48,8 +48,8 @@ public class VoxelMapRenderer {
         // Draw Axis Marker (Center)
         drawAxis(poseStack);
         
-        // Draw Debug Cube
-        drawDebugCube(poseStack);
+        // Render Player Marker (Textured Cube)
+        renderPlayerMarker(poseStack, player);
         
         ClientMapData clientData = ClientMapData.getInstance();
         int cutY = clientData.getCutY();
@@ -250,13 +250,28 @@ public class VoxelMapRenderer {
         BufferUploader.drawWithShader(buf.end());
     }
     
-    private static void drawDebugCube(PoseStack poseStack) {
+    private static void renderPlayerMarker(PoseStack poseStack, Player player) {
+        if (!(player instanceof AbstractClientPlayer)) return;
+        
+        AbstractClientPlayer abstractClientPlayer = (AbstractClientPlayer) player;
+        ResourceLocation skin = abstractClientPlayer.getSkinTextureLocation();
+        
+        RenderSystem.setShaderTexture(0, skin);
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        
+        poseStack.pushPose();
+        poseStack.mulPose(Axis.YP.rotationDegrees(180));
+        
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        renderBox(buf, poseStack.last().pose(), 0, 0, 0, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+        
+        // Render at 0,0,0 (Center of map) with size 1.0
+        renderTexturedHead(buf, poseStack.last().pose(), 0, 0, 0, 1.0f);
+        
         BufferUploader.drawWithShader(buf.end());
+        
+        poseStack.popPose();
     }
     
     private static void renderChunks(PoseStack poseStack, Player player, int radius, int minBuildHeight, int renderMinY, int renderMaxY, boolean isUnderground) {
@@ -408,7 +423,7 @@ public class VoxelMapRenderer {
             if (e instanceof AbstractClientPlayer) {
                 if (!ClientSettings.showPlayers) continue;
                 AbstractClientPlayer p = (AbstractClientPlayer) e;
-                if (p == player) { // Only render self for now as per request "tu personaje"
+                if (p != player) { // Render other players, but NOT self (self is rendered as marker at center)
                      renderPlayerHead(poseStack, p, centerX, centerZ, centerY);
                 }
             }

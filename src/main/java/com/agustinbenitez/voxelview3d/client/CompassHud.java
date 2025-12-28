@@ -18,6 +18,9 @@ import net.minecraftforge.client.gui.overlay.ForgeGui;
 import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
 import java.awt.Color;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 public class CompassHud implements IGuiOverlay {
     
@@ -95,6 +98,8 @@ public class CompassHud implements IGuiOverlay {
         }
 
         // 3. Draw Waypoints
+        List<VisibleWaypoint> visibleWaypoints = new ArrayList<>();
+        
         for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
             if (!wp.visible) continue;
             
@@ -105,7 +110,76 @@ public class CompassHud implements IGuiOverlay {
             double angleDeg = Math.toDegrees(angleRad);
             double wpYaw = angleDeg - 90;
             
-            drawWaypointMarker(guiGraphics, playerYaw, (float)wpYaw, wp, centerX, topY);
+            float delta = Mth.wrapDegrees((float)wpYaw - playerYaw);
+            
+            if (Math.abs(delta) < VISIBLE_ANGLE / 2.0f) {
+                float offset = (delta / (VISIBLE_ANGLE / 2.0f)) * (COMPASS_WIDTH / 2.0f);
+                int x = (int)(centerX + offset);
+                visibleWaypoints.add(new VisibleWaypoint(wp, x));
+            }
+        }
+        
+        // Sort by X position
+        visibleWaypoints.sort(Comparator.comparingInt(w -> w.x));
+        
+        // Group overlapping waypoints
+        List<List<VisibleWaypoint>> groups = new ArrayList<>();
+        if (!visibleWaypoints.isEmpty()) {
+            List<VisibleWaypoint> currentGroup = new ArrayList<>();
+            currentGroup.add(visibleWaypoints.get(0));
+            groups.add(currentGroup);
+            
+            for (int i = 1; i < visibleWaypoints.size(); i++) {
+                VisibleWaypoint current = visibleWaypoints.get(i);
+                VisibleWaypoint prev = currentGroup.get(currentGroup.size() - 1);
+                
+                // Overlap threshold (e.g. 15 pixels)
+                if (current.x - prev.x < 15) {
+                    currentGroup.add(current);
+                } else {
+                    currentGroup = new ArrayList<>();
+                    currentGroup.add(current);
+                    groups.add(currentGroup);
+                }
+            }
+        }
+        
+        // Render groups
+        for (List<VisibleWaypoint> group : groups) {
+            if (group.size() == 1) {
+                // Render single
+                VisibleWaypoint vwp = group.get(0);
+                drawWaypointMarker(guiGraphics, vwp.x, topY, vwp.wp, false, true);
+            } else {
+                // Render stacked
+                // Draw from last to first (back to front)? 
+                // Actually, if we want them "stacked", we usually draw the bottom one first.
+                // Let's verify: "Apilados" -> Stacked.
+                // If I draw index 0 first, then index 1 on top...
+                
+                // Use average X for the stack to center it
+                int avgX = (int) group.stream().mapToInt(w -> w.x).average().orElse(0);
+                
+                for (int i = 0; i < group.size(); i++) {
+                    // Draw with offset and smaller size
+                    // i=0 is the "bottom" of the stack (first one found, usually left-most)
+                    // But visually, the "top" of the stack should be the last one drawn.
+                    // Let's make the last item in the group the "top" one.
+                    
+                    int stackIndex = i; // 0 is bottom, size-1 is top
+                    boolean isTop = (i == group.size() - 1);
+                    
+                    // Offset: shift up for items behind?
+                    // Let's shift the items behind UPwards (-y)
+                    // Top item (last) is at y. Item before is at y - 3.
+                    // So yOffset = (group.size() - 1 - i) * -3
+                    
+                    int reverseIndex = group.size() - 1 - i;
+                    int yOffset = reverseIndex * -3; 
+                    
+                    drawWaypointMarker(guiGraphics, avgX, topY + yOffset, group.get(i).wp, true, isTop);
+                }
+            }
         }
 
         // 4. Draw Directions (N, S, E, W) - Drawn AFTER entities/waypoints to be on top
@@ -136,35 +210,67 @@ public class CompassHud implements IGuiOverlay {
         }
     }
     
-    private void drawWaypointMarker(GuiGraphics guiGraphics, float playerYaw, float wpYaw, ClientSettings.Waypoint wp, int centerX, int topY) {
-        float delta = Mth.wrapDegrees(wpYaw - playerYaw);
+    private void drawWaypointMarker(GuiGraphics guiGraphics, int x, int topY, ClientSettings.Waypoint wp, boolean isStacked, boolean isTop) {
+        int y = topY + 1; // Slightly higher
         
-        if (Math.abs(delta) < VISIBLE_ANGLE / 2.0f) {
-            float offset = (delta / (VISIBLE_ANGLE / 2.0f)) * (COMPASS_WIDTH / 2.0f);
-            int x = (int)(centerX + offset);
-            int y = topY + 1; // Slightly higher
-            
-            // Draw Icon instead of colored rect
-            ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
-            RenderSystem.setShaderTexture(0, iconLoc);
-            
-            int iconSize = 10;
-            // Draw icon centered at x
-            guiGraphics.blit(iconLoc, x - iconSize/2, y, iconSize, iconSize, 0, 0, 16, 16, 16, 16);
-            
-            // Draw text BELOW the marker
-            // Scale down text to fit better
+        // Draw Icon instead of colored rect
+        ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+        RenderSystem.setShaderTexture(0, iconLoc);
+        
+        int iconSize = isStacked ? 7 : 10; // Smaller if stacked
+        
+        // Draw icon centered at x
+        // If stacked, we might want to shift it visually or just use the y offset provided in the loop
+        // The y passed here already includes the stack offset.
+        
+        guiGraphics.blit(iconLoc, x - iconSize/2, y, iconSize, iconSize, 0, 0, 16, 16, 16, 16);
+        
+        // Draw text BELOW the marker (only if not stacked, or only for the top one?)
+        // If stacked, maybe only show text for the top one? Or none?
+        // User didn't specify, but text for all would be messy.
+        // Let's show text only if !isStacked. Or if it's the top of the stack?
+        // But the method doesn't know if it's the top. 
+        // Actually, the loop logic: stackIndex is passed. But we don't know total size here easily.
+        // Let's just assume if isStacked, we skip text to avoid clutter, or draw it very small?
+        // "apilados" -> usually implies only top one is fully interactable/visible details.
+        // Let's hide text for stacked items to keep it clean, unless user complains.
+        // Wait, if I have 2 important waypoints, I want to see both names?
+        // But they overlap.
+        // Let's just draw text for all but with the same y offset logic so they stack too?
+        // If I draw text for all, it will be unreadable.
+        // Let's only draw text for the *front-most* item?
+        // In the loop, I draw from back to front.
+        // So the last one drawn (front) will be on top.
+        // But if I draw text for back ones, the front icon will cover it? No, text is below icon.
+        // Text will stack messy.
+        // Let's disable text for stacked items for now, except maybe the top one?
+        // Implementation: Pass `isTop` boolean?
+        // I'll stick to: if stacked, no text. Simpler and cleaner. 
+        // Or better: Show text only if NOT stacked.
+        
+        if (!isStacked || isTop) {
             PoseStack pose = guiGraphics.pose();
             pose.pushPose();
             float scale = 0.5f;
             // Move text down (y + 12) to be below icon (icon is 10px)
-            pose.translate(x, y + 12, 0);
+            // Adjust for smaller icon if stacked
+            pose.translate(x, y + (isStacked ? 9 : 12), 0);
             pose.scale(scale, scale, 1.0f);
             
             int textWidth = Minecraft.getInstance().font.width(wp.name);
             guiGraphics.drawString(Minecraft.getInstance().font, wp.name, -textWidth / 2, 0, 0xFFFFFFFF, false);
             
             pose.popPose();
+        }
+    }
+    
+    private static class VisibleWaypoint {
+        ClientSettings.Waypoint wp;
+        int x;
+        
+        public VisibleWaypoint(ClientSettings.Waypoint wp, int x) {
+            this.wp = wp;
+            this.x = x;
         }
     }
     
@@ -182,18 +288,17 @@ public class CompassHud implements IGuiOverlay {
                 ResourceLocation skin = p.getSkinTextureLocation();
                 
                 RenderSystem.setShaderTexture(0, skin);
-                // Draw 8x8 face scaled to 8x8 on screen (or bigger)
-                // blit(texture, x, y, width, height, u, v, uWidth, vHeight, texWidth, texHeight)
-                // Head is usually at u=8, v=8, size 8x8. 
-                // Texture size 64x64.
                 
-                int headSize = 16;
+                // Draw 8x8 face scaled to 8x8 on screen (smaller, aligned with other markers)
+                int headSize = 8;
+                int drawY = y + 4; // Align with generic markers
+                
                 // Center the head on x
                 // Draw face
-                guiGraphics.blit(skin, x - headSize/2, y, headSize, headSize, 8, 8, 8, 8, 64, 64);
+                guiGraphics.blit(skin, x - headSize/2, drawY, headSize, headSize, 8, 8, 8, 8, 64, 64);
                 // Draw hat/outer layer
                 RenderSystem.enableBlend();
-                guiGraphics.blit(skin, x - headSize/2, y, headSize, headSize, 40, 8, 8, 8, 64, 64);
+                guiGraphics.blit(skin, x - headSize/2, drawY, headSize, headSize, 40, 8, 8, 8, 64, 64);
                 RenderSystem.disableBlend();
                 
             } else {
