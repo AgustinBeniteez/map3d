@@ -106,7 +106,7 @@ public class VoxelMapRenderer {
         renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY, isUnderground);
         
         // Render Entities
-        renderEntities(poseStack, player, renderMinY, renderMaxY);
+        renderEntities(poseStack, player, renderMinY, renderMaxY, renderRadius);
 
         // Render Waypoints
         renderWaypoints(poseStack, player, cameraYaw, cameraPitch);
@@ -125,21 +125,11 @@ public class VoxelMapRenderer {
         double centerZ = player.getZ();
         double centerY = player.getY();
         
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        
         for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
             if (!wp.visible) continue;
             
             double rx = wp.x + 0.5 - centerX;
             double rz = wp.z + 0.5 - centerZ;
-            
-            // Draw Beam (Infinite Vertical)
-            // We draw a very tall box centered vertically around the player (y=0 relative)
-            // This ensures it looks like it goes from bottom to top of the world
-            double beamHeight = 2048.0; 
-            double beamY = 0; // Relative to camera (which is 0)
             
             // Calculate distance for fading
             double distSq = rx*rx + rz*rz;
@@ -152,29 +142,12 @@ public class VoxelMapRenderer {
                 if (alpha < 0.1f) alpha = 0.05f; // almost invisible
             }
             
-            buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-            
-            int color = wp.color;
-            float r = ((color >> 16) & 0xFF) / 255.0f;
-            float g = ((color >> 8) & 0xFF) / 255.0f;
-            float b = (color & 0xFF) / 255.0f;
-            
-            // Inner beam (thinner, more opaque)
-            float wInner = 0.2f; 
-            renderBox(buf, poseStack.last().pose(), rx, beamY, rz, wInner, (float)beamHeight, wInner, r, g, b, alpha);
-            
-            // Outer beam (wider, more transparent)
-            float wOuter = 0.6f;
-            renderBox(buf, poseStack.last().pose(), rx, beamY, rz, wOuter, (float)beamHeight, wOuter, r, g, b, alpha * 0.3f);
-            
-            BufferUploader.drawWithShader(buf.end());
-            
-            // Draw Name Tag
-            // Position name tag slightly above the waypoint's actual Y coordinate, or above player if far?
+            // Draw Name Tag & Icon
+            // Position name tag slightly above the waypoint's actual Y coordinate
             // Let's keep it at the waypoint's Y coordinate so you know its altitude
             double ry = wp.y - centerY; 
             
-            if (alpha > 0.2f) { // Only show name if beam is somewhat visible
+            if (alpha > 0.2f) { // Only show name if somewhat visible (not right on top of player)
                 poseStack.pushPose();
                 poseStack.translate(rx, ry + 2.5, rz);
                 // Billboard effect
@@ -379,13 +352,15 @@ public class VoxelMapRenderer {
         }
     }
     
-    private static void renderEntities(PoseStack poseStack, Player player, int minY, int maxY) {
+    private static void renderEntities(PoseStack poseStack, Player player, int minY, int maxY, int radius) {
         double centerX = player.getX();
         double centerZ = player.getZ();
         double centerY = player.getY();
         
         Minecraft mc = Minecraft.getInstance();
         Iterable<Entity> entities = mc.level.entitiesForRendering();
+        Map<ChunkPos, ChunkScanner.ScannedChunk> scannedData = ChunkScanner.getData();
+        ChunkPos playerChunk = player.chunkPosition();
         
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
@@ -399,6 +374,19 @@ public class VoxelMapRenderer {
             
             // Vertical Culling for Entities
             if (e.getY() < minY || e.getY() > maxY) continue;
+            
+            // Horizontal Culling (Radius & Scanned Check)
+            ChunkPos entityChunk = new ChunkPos(e.blockPosition());
+            
+            // Check if chunk is scanned (only render entities on visible map chunks)
+            if (!scannedData.containsKey(entityChunk)) continue;
+            
+            // Check radius
+            if (radius > 0) {
+                 int dx = Math.abs(entityChunk.x - playerChunk.x);
+                 int dz = Math.abs(entityChunk.z - playerChunk.z);
+                 if (dx > radius || dz > radius) continue;
+            }
             
             double rx = e.getX() - centerX;
             double ry = e.getY() - centerY;

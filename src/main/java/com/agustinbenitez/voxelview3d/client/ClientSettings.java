@@ -8,6 +8,11 @@ public class ClientSettings {
     public static boolean showAnimals = true;
     public static boolean showEnemies = true;
     public static boolean showPlayers = true;
+    public static boolean showCompass = true;
+    
+    // New settings
+    public static int renderDistance = 10;
+    public static boolean showCoords = true;
 
     public static final List<Waypoint> waypoints = new ArrayList<>();
 

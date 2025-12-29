@@ -29,7 +29,10 @@ public class VoxelMapScreen extends Screen {
 
     // UI Components
     private boolean showWaypointModal = false;
+    private boolean showSettingsModal = false;
     private boolean isCreatingMode = false; // Toggle between List and Create mode
+    private float scrollOffset = 0; // Scroll offset for waypoint list
+    private boolean isDraggingMap = false;
     private ClientSettings.Waypoint editingWaypoint = null;
     
     private EditBox waypointNameField;
@@ -51,9 +54,15 @@ public class VoxelMapScreen extends Screen {
     private Button togglePlayers;
     private Button waypointsBtn;
     private Button closeModalBtn;
+    
+    // Settings Widgets
+    private Button toggleCompassBtn;
+    private Button toggleCoordsBtn;
+    private Button renderDistanceBtn;
+    private Button closeSettingsBtn;
 
     public VoxelMapScreen() {
-        super(Component.literal("Voxel Map"));
+        super(Component.translatable("voxelview3d.title"));
     }
     
     @Override
@@ -65,32 +74,32 @@ public class VoxelMapScreen extends Screen {
         int x = 10;
         
         // Toggle Buttons
-        toggleVillagers = addRenderableWidget(Button.builder(Component.literal("Vil: " + (ClientSettings.showVillagers ? "ON" : "OFF")), b -> {
+        toggleVillagers = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.toggle.villagers").append(Component.translatable(ClientSettings.showVillagers ? "voxelview3d.on" : "voxelview3d.off")), b -> {
             ClientSettings.showVillagers = !ClientSettings.showVillagers;
-            b.setMessage(Component.literal("Vil: " + (ClientSettings.showVillagers ? "ON" : "OFF")));
+            b.setMessage(Component.translatable("voxelview3d.toggle.villagers").append(Component.translatable(ClientSettings.showVillagers ? "voxelview3d.on" : "voxelview3d.off")));
         }).bounds(x, buttonY, btnWidth, 20).build());
         x += btnWidth + 5;
         
-        toggleAnimals = addRenderableWidget(Button.builder(Component.literal("Ani: " + (ClientSettings.showAnimals ? "ON" : "OFF")), b -> {
+        toggleAnimals = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.toggle.animals").append(Component.translatable(ClientSettings.showAnimals ? "voxelview3d.on" : "voxelview3d.off")), b -> {
             ClientSettings.showAnimals = !ClientSettings.showAnimals;
-            b.setMessage(Component.literal("Ani: " + (ClientSettings.showAnimals ? "ON" : "OFF")));
+            b.setMessage(Component.translatable("voxelview3d.toggle.animals").append(Component.translatable(ClientSettings.showAnimals ? "voxelview3d.on" : "voxelview3d.off")));
         }).bounds(x, buttonY, btnWidth, 20).build());
         x += btnWidth + 5;
         
-        toggleEnemies = addRenderableWidget(Button.builder(Component.literal("Ene: " + (ClientSettings.showEnemies ? "ON" : "OFF")), b -> {
+        toggleEnemies = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.toggle.enemies").append(Component.translatable(ClientSettings.showEnemies ? "voxelview3d.on" : "voxelview3d.off")), b -> {
             ClientSettings.showEnemies = !ClientSettings.showEnemies;
-            b.setMessage(Component.literal("Ene: " + (ClientSettings.showEnemies ? "ON" : "OFF")));
+            b.setMessage(Component.translatable("voxelview3d.toggle.enemies").append(Component.translatable(ClientSettings.showEnemies ? "voxelview3d.on" : "voxelview3d.off")));
         }).bounds(x, buttonY, btnWidth, 20).build());
         x += btnWidth + 5;
         
-        togglePlayers = addRenderableWidget(Button.builder(Component.literal("Pla: " + (ClientSettings.showPlayers ? "ON" : "OFF")), b -> {
+        togglePlayers = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.toggle.players").append(Component.translatable(ClientSettings.showPlayers ? "voxelview3d.on" : "voxelview3d.off")), b -> {
             ClientSettings.showPlayers = !ClientSettings.showPlayers;
-            b.setMessage(Component.literal("Pla: " + (ClientSettings.showPlayers ? "ON" : "OFF")));
+            b.setMessage(Component.translatable("voxelview3d.toggle.players").append(Component.translatable(ClientSettings.showPlayers ? "voxelview3d.on" : "voxelview3d.off")));
         }).bounds(x, buttonY, btnWidth, 20).build());
         x += btnWidth + 5;
         
         // Waypoints Button
-        waypointsBtn = addRenderableWidget(Button.builder(Component.literal("Waypoints"), b -> {
+        waypointsBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.waypoints"), b -> {
             toggleModal();
         }).bounds(x, buttonY, 70, 20).build());
         
@@ -114,7 +123,7 @@ public class VoxelMapScreen extends Screen {
         // --- Create Mode Widgets ---
         
         // Name
-        waypointNameField = new EditBox(this.font, centerX - 100, modalY + 30, 200, 20, Component.literal("Name"));
+        waypointNameField = new EditBox(this.font, centerX - 100, modalY + 30, 200, 20, Component.translatable("voxelview3d.waypoint.name"));
         addRenderableWidget(waypointNameField);
         
         // Coords
@@ -124,9 +133,9 @@ public class VoxelMapScreen extends Screen {
         int startCoordX = centerX - (totalCoordW / 2);
         
         int coordsY = modalY + 65;
-        wpX = new EditBox(this.font, startCoordX, coordsY, coordW, 20, Component.literal("X"));
-        wpY = new EditBox(this.font, startCoordX + coordW + coordGap, coordsY, coordW, 20, Component.literal("Y"));
-        wpZ = new EditBox(this.font, startCoordX + (coordW + coordGap) * 2, coordsY, coordW, 20, Component.literal("Z"));
+        wpX = new EditBox(this.font, startCoordX, coordsY, coordW, 20, Component.translatable("voxelview3d.waypoint.x"));
+        wpY = new EditBox(this.font, startCoordX + coordW + coordGap, coordsY, coordW, 20, Component.translatable("voxelview3d.waypoint.y"));
+        wpZ = new EditBox(this.font, startCoordX + (coordW + coordGap) * 2, coordsY, coordW, 20, Component.translatable("voxelview3d.waypoint.z"));
         addRenderableWidget(wpX);
         addRenderableWidget(wpY);
         addRenderableWidget(wpZ);
@@ -170,14 +179,14 @@ public class VoxelMapScreen extends Screen {
         int desiredButtonY = modalY + modalH - 30;
         int finalButtonY = Math.max(minButtonY, desiredButtonY);
         
-        createWaypointBtn = addRenderableWidget(Button.builder(Component.literal("Save Waypoint"), b -> {
+        createWaypointBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.waypoint.save"), b -> {
             createWaypoint();
         }).bounds(centerX - 100, finalButtonY, 200, 20).build());
         
         // --- List Mode Widgets ---
         
         // Open Create Mode Button (in List Mode)
-        openCreateModeBtn = addRenderableWidget(Button.builder(Component.literal("Create New Waypoint"), b -> {
+        openCreateModeBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.waypoint.create_new"), b -> {
             isCreatingMode = true;
             editingWaypoint = null;
             // Pre-fill coordinates when entering create mode
@@ -202,17 +211,45 @@ public class VoxelMapScreen extends Screen {
                 updateModalVisibility();
             }
         }).bounds(modalX + modalW - 25, modalY + 5, 20, 20).build());
+        
+        // --- Settings Modal Widgets ---
+        int settingsW = 200;
+        int settingsH = 150;
+        int settingsX = (this.width - settingsW) / 2;
+        int settingsY = (this.height - settingsH) / 2;
+        
+        toggleCompassBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.compass").append(": ").append(Component.translatable(ClientSettings.showCompass ? "voxelview3d.settings.compass.on" : "voxelview3d.settings.compass.off")), b -> {
+            ClientSettings.showCompass = !ClientSettings.showCompass;
+            b.setMessage(Component.translatable("voxelview3d.settings.compass").append(": ").append(Component.translatable(ClientSettings.showCompass ? "voxelview3d.settings.compass.on" : "voxelview3d.settings.compass.off")));
+        }).bounds(settingsX + 10, settingsY + 30, settingsW - 20, 20).build());
+        
+        toggleCoordsBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.coords").append(Component.translatable(ClientSettings.showCoords ? "voxelview3d.on" : "voxelview3d.off")), b -> {
+            ClientSettings.showCoords = !ClientSettings.showCoords;
+            b.setMessage(Component.translatable("voxelview3d.settings.coords").append(Component.translatable(ClientSettings.showCoords ? "voxelview3d.on" : "voxelview3d.off")));
+        }).bounds(settingsX + 10, settingsY + 55, settingsW - 20, 20).build());
+        
+        renderDistanceBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)), b -> {
+            ClientSettings.renderDistance += 5;
+            if (ClientSettings.renderDistance > 15) ClientSettings.renderDistance = 5;
+            b.setMessage(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)));
+        }).bounds(settingsX + 10, settingsY + 80, settingsW - 20, 20).build());
+        
+        closeSettingsBtn = addRenderableWidget(Button.builder(Component.literal("X"), b -> {
+            showSettingsModal = false;
+            updateModalVisibility();
+        }).bounds(settingsX + settingsW - 25, settingsY + 5, 20, 20).build());
     }
     
     private void toggleModal() {
         showWaypointModal = !showWaypointModal;
+        showSettingsModal = false; // Close settings if opening waypoints
         isCreatingMode = false; // Always start in List mode
         editingWaypoint = null;
         updateModalVisibility();
     }
     
     private void updateModalVisibility() {
-        // Modal controls
+        // Waypoint Modal controls
         if (closeModalBtn != null) closeModalBtn.visible = showWaypointModal;
         
         // Create Mode Widgets
@@ -224,9 +261,8 @@ public class VoxelMapScreen extends Screen {
         if (wpZ != null) wpZ.visible = showCreate;
         if (createWaypointBtn != null) {
             createWaypointBtn.visible = showCreate;
-            createWaypointBtn.setMessage(Component.literal(editingWaypoint != null ? "Save Changes" : "Create Waypoint"));
+            createWaypointBtn.setMessage(editingWaypoint != null ? Component.translatable("voxelview3d.waypoint.save_changes") : Component.translatable("voxelview3d.waypoint.create"));
         }
-        // if (cancelCreateBtn != null) cancelCreateBtn.visible = showCreate;
         
         for (Button b : colorButtons) {
             b.visible = showCreate;
@@ -240,8 +276,15 @@ public class VoxelMapScreen extends Screen {
         boolean showList = showWaypointModal && !isCreatingMode;
         if (openCreateModeBtn != null) openCreateModeBtn.visible = showList;
         
-        // Bottom Menu controls (Hide when modal is open to avoid overlap/bleed through)
-        boolean showBottom = !showWaypointModal;
+        // Settings Modal Widgets
+        boolean showSettings = showSettingsModal;
+        if (toggleCompassBtn != null) toggleCompassBtn.visible = showSettings;
+        if (toggleCoordsBtn != null) toggleCoordsBtn.visible = showSettings;
+        if (renderDistanceBtn != null) renderDistanceBtn.visible = showSettings;
+        if (closeSettingsBtn != null) closeSettingsBtn.visible = showSettings;
+        
+        // Bottom Menu controls (Hide when any modal is open)
+        boolean showBottom = !showWaypointModal && !showSettingsModal;
         if (toggleVillagers != null) toggleVillagers.visible = showBottom;
         if (toggleAnimals != null) toggleAnimals.visible = showBottom;
         if (toggleEnemies != null) toggleEnemies.visible = showBottom;
@@ -285,8 +328,53 @@ public class VoxelMapScreen extends Screen {
     }
     
     @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (KeyBindings.OPEN_MAP_KEY.matches(keyCode, scanCode)) {
+            this.onClose();
+            return true;
+        }
+
+        if (keyCode == 256) { // ESC
+             if (showWaypointModal) {
+                 if (isCreatingMode) {
+                     // Go back to List
+                     isCreatingMode = false;
+                     editingWaypoint = null;
+                     updateModalVisibility();
+                     return true;
+                 } else {
+                     // Close Modal
+                     showWaypointModal = false;
+                     updateModalVisibility();
+                     return true;
+                 }
+             }
+             
+             if (showSettingsModal) {
+                 showSettingsModal = false;
+                 updateModalVisibility();
+                 return true;
+             }
+        }
+        
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+    
+    @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
+        
+        // Settings Button Click (Top Left)
+        if (!showWaypointModal && !showSettingsModal) {
+            int btnX = 10;
+            int btnY = 10;
+            int btnSize = 20;
+            if (mouseX >= btnX && mouseX <= btnX + btnSize && mouseY >= btnY && mouseY <= btnY + btnSize) {
+                showSettingsModal = true;
+                updateModalVisibility();
+                return true;
+            }
+        }
         
         if (showWaypointModal && !isCreatingMode) {
             // Check clicks on the Waypoint List (Full Width)
@@ -303,12 +391,18 @@ public class VoxelMapScreen extends Screen {
             int listWidth = modalW - 20; 
             
             // Calculate visible items based on available height minus title (35) and bottom button space (50)
-            int visibleItems = (modalH - 85) / itemHeight;
+            int listHeight = modalH - 85;
             
-            int clickedIndex = (int)((mouseY - listY) / itemHeight);
+            // Adjust clicked index based on scroll
+            int clickedIndex = (int)((mouseY - listY + scrollOffset) / itemHeight);
             
-            if (clickedIndex >= 0 && clickedIndex < visibleItems && clickedIndex < ClientSettings.waypoints.size() && mouseX >= listX && mouseX <= listX + listWidth && mouseY >= listY && mouseY < listY + (visibleItems * itemHeight)) {
+            // Check if click is within list bounds visually
+            if (mouseY >= listY && mouseY <= listY + listHeight && 
+                clickedIndex >= 0 && clickedIndex < ClientSettings.waypoints.size() && 
+                mouseX >= listX && mouseX <= listX + listWidth) {
+                
                  ClientSettings.Waypoint wp = ClientSettings.waypoints.get(clickedIndex);
+                 int rowY = (int)(listY + (clickedIndex * itemHeight) - scrollOffset);
                  
                  // Buttons positions relative to list right edge
                  int rightEdge = listX + listWidth;
@@ -360,7 +454,19 @@ public class VoxelMapScreen extends Screen {
             }
         }
         
+        // If not hovering any UI element, start dragging map
+        if (!isHoveringUI(mouseX, mouseY)) {
+            isDraggingMap = true;
+            return true;
+        }
+        
         return false;
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        isDraggingMap = false;
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
@@ -374,7 +480,9 @@ public class VoxelMapScreen extends Screen {
         poseStack.translate(this.width / 2.0 + panX, this.height / 2.0 + panY, 600);
         
         // Use shared renderer
-        VoxelMapRenderer.renderMap(poseStack, zoom, cameraPitch, cameraYaw, false, 10);
+        if (!showWaypointModal && !showSettingsModal) {
+            VoxelMapRenderer.renderMap(poseStack, zoom, cameraPitch, cameraYaw, false, ClientSettings.renderDistance);
+        }
         
         // Clear depth buffer to ensure UI draws cleanly on top of the 3D map
         RenderSystem.depthMask(true);
@@ -389,33 +497,50 @@ public class VoxelMapScreen extends Screen {
         // Draw Bottom Menu Background
         int menuHeight = 35;
         int menuY = this.height - menuHeight;
-        if (!showWaypointModal) { 
+        if (!showWaypointModal && !showSettingsModal) { 
              guiGraphics.fill(0, menuY, this.width, this.height, 0x80000000); // Semi-transparent black
         }
         
+        // Draw Settings Button (Top Left)
+        if (!showWaypointModal && !showSettingsModal) {
+            int btnX = 10;
+            int btnY = 10;
+            int btnSize = 20;
+            
+            // Hover effect
+            boolean isHovered = mouseX >= btnX && mouseX <= btnX + btnSize && mouseY >= btnY && mouseY <= btnY + btnSize;
+            int renderSize = isHovered ? 24 : 20;
+            int renderX = btnX - (renderSize - btnSize) / 2;
+            int renderY = btnY - (renderSize - btnSize) / 2;
+            
+            ResourceLocation settingsIcon = new ResourceLocation("voxelview3d", "textures/settings.png");
+            RenderSystem.setShaderTexture(0, settingsIcon);
+            guiGraphics.blit(settingsIcon, renderX, renderY, 0, 0, renderSize, renderSize, renderSize, renderSize);
+        }
+        
         // Draw Zoom Level
-        if (!showWaypointModal) {
-            String zoomText = String.format("Zoom: %.1f", zoom);
+        if (!showWaypointModal && !showSettingsModal) {
+            Component zoomText = Component.translatable("voxelview3d.zoom", String.format("%.1f", zoom));
             guiGraphics.drawString(this.font, zoomText, this.width - 80, menuY + 10, 0xFFFFFFFF);
         }
 
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null && !showWaypointModal) {
+        if (mc.player != null && !showWaypointModal && !showSettingsModal && ClientSettings.showCoords) {
             Player player = mc.player;
             int x = player.getBlockX();
             int y = player.getBlockY();
             int z = player.getBlockZ();
             
-            String coords = String.format("X: %d Y: %d Z: %d", x, y, z);
+            Component coords = Component.translatable("voxelview3d.coords", x, y, z);
             
             // Get Biome
-            String biomeName = "Unknown Biome";
+            String biomeName = Component.translatable("voxelview3d.biome.unknown").getString();
             if (mc.level != null) {
                 Holder<Biome> biomeHolder = mc.level.getBiome(player.blockPosition());
                 biomeName = biomeHolder.unwrapKey()
                         .map(ResourceKey::location)
                         .map(ResourceLocation::getPath)
-                        .orElse("Unknown");
+                        .orElse(Component.translatable("voxelview3d.unknown").getString());
                 
                 // Capitalize
                 biomeName = capitalize(biomeName.replace('_', ' '));
@@ -433,8 +558,24 @@ public class VoxelMapScreen extends Screen {
             renderWaypointModal(guiGraphics, mouseX, mouseY);
         }
         
+        if (showSettingsModal) {
+            renderSettingsModal(guiGraphics, mouseX, mouseY);
+        }
+        
         // Render Widgets (Buttons, etc.)
         super.render(guiGraphics, mouseX, mouseY, partialTicks);
+        
+        // Draw icon on waypoints button
+        if (waypointsBtn != null && waypointsBtn.visible) {
+            ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/iconpoints.png");
+            RenderSystem.setShaderTexture(0, iconLoc);
+            RenderSystem.enableBlend();
+            // Draw icon slightly to the left of text or centered if no text
+            // Button bounds: waypointsBtn.getX(), waypointsBtn.getY(), width 70, height 20
+            // Let's place it at x+5, y+2 (size 16x16)
+            guiGraphics.blit(iconLoc, waypointsBtn.getX() + 5, waypointsBtn.getY() + 2, 0, 0, 16, 16, 16, 16);
+            RenderSystem.disableBlend();
+        }
         
         // Render Modal Overlays (Icons, Selection Borders) if open
         if (showWaypointModal && isCreatingMode) {
@@ -474,6 +615,25 @@ public class VoxelMapScreen extends Screen {
         }
     }
     
+    private void renderSettingsModal(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        int settingsW = 200;
+        int settingsH = 150;
+        int settingsX = (this.width - settingsW) / 2;
+        int settingsY = (this.height - settingsH) / 2;
+        
+        // Background
+        guiGraphics.fill(settingsX, settingsY, settingsX + settingsW, settingsY + settingsH, 0xF0101010);
+        
+        // Title Bar
+        guiGraphics.fill(settingsX, settingsY, settingsX + settingsW, settingsY + 25, 0xFF000000);
+        
+        // Border
+        guiGraphics.renderOutline(settingsX, settingsY, settingsW, settingsH, 0xFF404040);
+        
+        // Title
+        guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.settings.title"), settingsX + settingsW / 2, settingsY + 8, 0xFFFFFFFF);
+    }
+
     private void renderWaypointModal(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         // Dynamic Full Screen Modal
         int margin = 10;
@@ -491,7 +651,7 @@ public class VoxelMapScreen extends Screen {
         // Border
         guiGraphics.renderOutline(modalX, modalY, modalW, modalH, 0xFF404040);
         
-        String title = isCreatingMode ? (editingWaypoint != null ? "Edit Waypoint" : "Create New Waypoint") : "Saved Waypoints";
+        Component title = isCreatingMode ? (editingWaypoint != null ? Component.translatable("voxelview3d.waypoint.edit_title") : Component.translatable("voxelview3d.waypoint.create_title")) : Component.translatable("voxelview3d.waypoint.list_title");
         guiGraphics.drawCenteredString(this.font, title, this.width / 2, modalY + 11, 0xFFFFFFFF);
         
         if (isCreatingMode) {
@@ -502,27 +662,31 @@ public class VoxelMapScreen extends Screen {
             int totalCoordW = (coordW * 3) + (coordGap * 2);
             int startCoordX = centerX - (totalCoordW / 2);
             
-            guiGraphics.drawCenteredString(this.font, "X", startCoordX + (coordW/2), modalY + 55, 0xFFAAAAAA);
-            guiGraphics.drawCenteredString(this.font, "Y", startCoordX + coordW + coordGap + (coordW/2), modalY + 55, 0xFFAAAAAA);
-            guiGraphics.drawCenteredString(this.font, "Z", startCoordX + (coordW + coordGap) * 2 + (coordW/2), modalY + 55, 0xFFAAAAAA);
+            guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.waypoint.x"), startCoordX + (coordW/2), modalY + 55, 0xFFAAAAAA);
+            guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.waypoint.y"), startCoordX + coordW + coordGap + (coordW/2), modalY + 55, 0xFFAAAAAA);
+            guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.waypoint.z"), startCoordX + (coordW + coordGap) * 2 + (coordW/2), modalY + 55, 0xFFAAAAAA);
             
-            guiGraphics.drawCenteredString(this.font, "Select Color", centerX, modalY + 95, 0xFFAAAAAA);
-            guiGraphics.drawCenteredString(this.font, "Select Icon", centerX, modalY + 135, 0xFFAAAAAA);
+            guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.waypoint.color"), centerX, modalY + 95, 0xFFAAAAAA);
+            guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.waypoint.icon"), centerX, modalY + 135, 0xFFAAAAAA);
             
         } else {
             // Render List
             int listX = modalX + 10;
             int listY = modalY + 35;
             int itemHeight = 30;
-            int visibleItems = (modalH - 85) / itemHeight; // Reserve space for button at bottom
+            int listHeight = modalH - 85; // Reserve space for button at bottom
             
             int listWidth = modalW - 20;
             
+            // Enable Scissor to clip content
+            guiGraphics.enableScissor(listX, listY, listX + listWidth, listY + listHeight);
+            
             for (int i = 0; i < ClientSettings.waypoints.size(); i++) {
-                 if (i >= visibleItems) break; // Limit
-                 
                  ClientSettings.Waypoint wp = ClientSettings.waypoints.get(i);
-                 int rowY = listY + (i * itemHeight);
+                 int rowY = (int)(listY + (i * itemHeight) - scrollOffset);
+                 
+                 // Skip if out of view
+                 if (rowY + itemHeight < listY || rowY > listY + listHeight) continue;
                  
                  // Row Background (alternate)
                  if (i % 2 == 0) {
@@ -554,24 +718,51 @@ public class VoxelMapScreen extends Screen {
                  // Edit
                  boolean editHover = mouseX >= rightEdge - 120 && mouseX < rightEdge - 100 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 120, rowY + 5, rightEdge - 100, rowY + 25, editHover ? 0xFF606060 : 0xFF404040);
-                 guiGraphics.drawCenteredString(this.font, "E", rightEdge - 110, rowY + 11, 0xFFFFFF00);
+                 ResourceLocation editIcon = new ResourceLocation("voxelview3d", "textures/edit.png");
+                 RenderSystem.setShaderTexture(0, editIcon);
+                 RenderSystem.enableBlend();
+                 guiGraphics.blit(editIcon, rightEdge - 118, rowY + 7, 0, 0, 16, 16, 16, 16);
+                 RenderSystem.disableBlend();
                  
                  // Eye (Visibility)
                  boolean eyeHover = mouseX >= rightEdge - 90 && mouseX < rightEdge - 70 && mouseY >= rowY && mouseY < rowY + itemHeight;
-                 String eyeText = wp.visible ? "O" : "-";
-                 int eyeColor = wp.visible ? 0xFF00FF00 : 0xFFFF0000;
                  guiGraphics.fill(rightEdge - 90, rowY + 5, rightEdge - 70, rowY + 25, eyeHover ? 0xFF606060 : 0xFF404040);
-                 guiGraphics.drawCenteredString(this.font, eyeText, rightEdge - 80, rowY + 11, eyeColor);
+                 ResourceLocation eyeIcon = new ResourceLocation("voxelview3d", "textures/" + (wp.visible ? "nothide.png" : "hide.png"));
+                 RenderSystem.setShaderTexture(0, eyeIcon);
+                 RenderSystem.enableBlend();
+                 guiGraphics.blit(eyeIcon, rightEdge - 88, rowY + 7, 0, 0, 16, 16, 16, 16);
+                 RenderSystem.disableBlend();
                  
                  // TP
                  boolean tpHover = mouseX >= rightEdge - 60 && mouseX < rightEdge - 40 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 60, rowY + 5, rightEdge - 40, rowY + 25, tpHover ? 0xFF606060 : 0xFF404040);
-                 guiGraphics.drawCenteredString(this.font, "T", rightEdge - 50, rowY + 11, 0xFF00FFFF);
+                 guiGraphics.drawCenteredString(this.font, "/TP", rightEdge - 50, rowY + 11, 0xFFFFFFFF);
                  
                  // Trash
                  boolean trashHover = mouseX >= rightEdge - 30 && mouseX < rightEdge - 10 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 30, rowY + 5, rightEdge - 10, rowY + 25, trashHover ? 0xFF606060 : 0xFF404040);
-                 guiGraphics.drawCenteredString(this.font, "X", rightEdge - 20, rowY + 11, 0xFFFF0000);
+                 ResourceLocation deleteIcon = new ResourceLocation("voxelview3d", trashHover ? "textures/deletehover.png" : "textures/delete.png");
+                 RenderSystem.setShaderTexture(0, deleteIcon);
+                 RenderSystem.enableBlend();
+                 guiGraphics.blit(deleteIcon, rightEdge - 28, rowY + 7, 0, 0, 16, 16, 16, 16);
+                 RenderSystem.disableBlend();
+            }
+            
+            guiGraphics.disableScissor();
+            
+            // Scrollbar
+            int totalContentHeight = ClientSettings.waypoints.size() * itemHeight;
+            if (totalContentHeight > listHeight) {
+                int scrollBarW = 6;
+                int scrollBarX = listX + listWidth - scrollBarW - 2;
+                int scrollBarH = (int)((float)listHeight * ((float)listHeight / totalContentHeight));
+                if (scrollBarH < 20) scrollBarH = 20;
+                
+                int maxScroll = totalContentHeight - listHeight;
+                int scrollY = listY + (int)((scrollOffset / maxScroll) * (listHeight - scrollBarH));
+                
+                guiGraphics.fill(scrollBarX, listY, scrollBarX + scrollBarW, listY + listHeight, 0x80000000); // Track
+                guiGraphics.fill(scrollBarX, scrollY, scrollBarX + scrollBarW, scrollY + scrollBarH, 0xFF808080); // Thumb
             }
         }
     }
@@ -585,16 +776,16 @@ public class VoxelMapScreen extends Screen {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (super.mouseDragged(mouseX, mouseY, button, dragX, dragY)) return true;
         
-        if (isHoveringUI(mouseX, mouseY)) return false;
-        
-        // Map interaction
-        if (button == 0) { // Left Click: Pan
-            this.panX += dragX;
-            this.panY += dragY;
-            return true;
-        } else if (button == 1) { // Right Click: Rotate
-            this.cameraYaw += (float)dragX;
-            return true;
+        if (isDraggingMap) {
+            // Map interaction
+            if (button == 0) { // Left Click: Pan
+                this.panX += dragX;
+                this.panY += dragY;
+                return true;
+            } else if (button == 1) { // Right Click: Rotate
+                this.cameraYaw += (float)dragX;
+                return true;
+            }
         }
         
         return false;
@@ -602,6 +793,34 @@ public class VoxelMapScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (showWaypointModal && !isCreatingMode) {
+             // Check if hovering list
+             int margin = 10;
+             int modalW = this.width - (margin * 2);
+             int modalH = this.height - (margin * 2);
+             int modalX = margin;
+             int modalY = margin;
+             
+             int listX = modalX + 10;
+             int listY = modalY + 35;
+             int listWidth = modalW - 20;
+             int listHeight = modalH - 85; // Matches render logic
+             
+             if (mouseX >= listX && mouseX <= listX + listWidth && mouseY >= listY && mouseY <= listY + listHeight) {
+                 this.scrollOffset -= delta * 20; // Scroll speed
+                 if (this.scrollOffset < 0) this.scrollOffset = 0;
+                 
+                 // Calculate max scroll
+                 int itemHeight = 30;
+                 int totalHeight = ClientSettings.waypoints.size() * itemHeight;
+                 int maxScroll = Math.max(0, totalHeight - listHeight);
+                 
+                 if (this.scrollOffset > maxScroll) this.scrollOffset = maxScroll;
+                 
+                 return true;
+             }
+        }
+
         if (super.mouseScrolled(mouseX, mouseY, delta)) return true;
         
         if (isHoveringUI(mouseX, mouseY)) return false;
@@ -609,7 +828,7 @@ public class VoxelMapScreen extends Screen {
         // Map interaction: Zoom
         this.zoom += (float)delta * 0.5f;
         if (this.zoom < 0.5f) this.zoom = 0.5f;
-        if (this.zoom > 20.0f) this.zoom = 20.0f;
+        if (this.zoom > 15.0f) this.zoom = 15.0f;
         return true;
     }
     
@@ -619,7 +838,7 @@ public class VoxelMapScreen extends Screen {
         
         // Modal
         if (showWaypointModal) {
-            int margin = 20;
+            int margin = 10;
             int modalX = margin;
             int modalY = margin;
             int modalW = this.width - (margin * 2);

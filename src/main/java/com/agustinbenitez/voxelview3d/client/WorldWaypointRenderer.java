@@ -14,6 +14,7 @@ import net.minecraftforge.fml.common.Mod;
 import org.joml.Matrix4f;
 
 import net.minecraft.resources.ResourceLocation;
+import java.util.*;
 
 @Mod.EventBusSubscriber(modid = "voxelview3d", value = Dist.CLIENT)
 public class WorldWaypointRenderer {
@@ -41,14 +42,27 @@ public class WorldWaypointRenderer {
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
+        // Group waypoints by X, Z
+        Map<String, List<ClientSettings.Waypoint>> groupedWaypoints = new HashMap<>();
         for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
             if (!wp.visible) continue;
+            String key = wp.x + "," + wp.z;
+            groupedWaypoints.computeIfAbsent(key, k -> new ArrayList<>()).add(wp);
+        }
 
-            double rx = wp.x + 0.5 - cameraPos.x;
-            double rz = wp.z + 0.5 - cameraPos.z;
+        for (List<ClientSettings.Waypoint> group : groupedWaypoints.values()) {
+            if (group.isEmpty()) continue;
+
+            // Sort by Y ascending
+            group.sort(Comparator.comparingInt(w -> w.y));
+
+            // 1. Render Beam (Only one per group, from the lowest visible waypoint)
+            // Use the first waypoint (lowest Y) for beam properties
+            ClientSettings.Waypoint baseWp = group.get(0);
             
-            // Beam from waypoint Y upwards
-            double bottomY = wp.y - cameraPos.y;
+            double rx = baseWp.x + 0.5 - cameraPos.x;
+            double rz = baseWp.z + 0.5 - cameraPos.z;
+            double bottomY = baseWp.y - cameraPos.y; // Start from lowest
             double beamHeight = 2048.0; 
             
             // Calculate distance for fading
@@ -62,9 +76,10 @@ public class WorldWaypointRenderer {
                 if (alpha < 0.1f) alpha = 0.05f; 
             }
             
+            // Draw Beam
             buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
             
-            int color = wp.color;
+            int color = baseWp.color;
             float r = ((color >> 16) & 0xFF) / 255.0f;
             float g = ((color >> 8) & 0xFF) / 255.0f;
             float b = (color & 0xFF) / 255.0f;
@@ -78,9 +93,27 @@ public class WorldWaypointRenderer {
             
             BufferUploader.drawWithShader(buf.end());
             
-            // Render Name Tag and Icon
+            // 2. Render Name Tags (Stacked)
             if (alpha > 0.2f) {
-                renderNameTag(poseStack, mc.font, wp, rx, bottomY + 2.5, rz, event.getCamera().getYRot());
+                double lastLabelTopY = -Double.MAX_VALUE; // Track top of last label in world Y
+                double labelHeightSpace = 1.0; // Space needed for one label (approx 1 block)
+
+                for (ClientSettings.Waypoint wp : group) {
+                    double targetY = wp.y + 2.5; // Natural position
+                    
+                    // If overlaps with last label, push up
+                    if (targetY < lastLabelTopY + labelHeightSpace) {
+                        targetY = lastLabelTopY + labelHeightSpace;
+                    }
+                    
+                    // Render relative to camera
+                    double renderY = targetY - cameraPos.y;
+                    
+                    renderNameTag(poseStack, mc.font, wp, rx, renderY, rz, event.getCamera().getYRot());
+                    
+                    // Update last top
+                    lastLabelTopY = targetY;
+                }
             }
         }
 
