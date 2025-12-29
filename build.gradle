@@ -56,7 +56,7 @@ tasks.named('processResources', ProcessResources).configure {
             mod_name: 'VoxelView 3D',
             mod_license: 'All Rights Reserved',
             mod_version: '1.0.0',
-            mod_authors: 'User',
+            mod_authors: 'Agustin Benitez',
             mod_description: 'Client-side 3D map renderer'
     ]
     inputs.properties replaceProperties

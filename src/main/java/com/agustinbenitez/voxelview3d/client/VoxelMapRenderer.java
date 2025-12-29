@@ -11,6 +11,8 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.animal.Squid;
+import net.minecraft.world.entity.GlowSquid;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
@@ -268,6 +270,10 @@ public class VoxelMapRenderer {
                      ChunkPos cp = new ChunkPos(playerChunk.x + x, playerChunk.z + z);
                      ChunkScanner.ScannedChunk chunkData = data.get(cp);
                      if (chunkData != null) {
+                         // Check Version?
+                         // If version mismatch, we could request rescan, but scan is server/world thread based.
+                         // For now, assume if data exists it is valid or will be replaced eventually.
+                         
                          // Flush per chunk to avoid massive buffers (OutOfMemory)
                          buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
                          renderChunkBlocks(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
@@ -300,6 +306,16 @@ public class VoxelMapRenderer {
             int z = (packed >> 4) & 0xF;
             int relY = (packed >> 8) & 0x1FF;
             int renderType = (packed >> 17) & 0xF;
+            int exposedFaces = (packed >> 21) & 0x3F;
+            
+            // If exposedFaces is 0, it might be old data OR a block with no exposed faces (fully buried).
+            // But fully buried blocks shouldn't be in the list?
+            // Actually, buried blocks are culled during scan.
+            // So if it's in the list, it MUST have some exposure.
+            // If exposedFaces is 0, it means it's old data format (where bits were 0).
+            // So we default to ALL exposed to be safe (and ugly grid) or just assume Top?
+            // Let's assume old data has Top exposed at least.
+            if (exposedFaces == 0) exposedFaces = 0x3F; // Default to all faces for old data
             
             int h = relY + minBuildHeight;
             
@@ -349,8 +365,10 @@ public class VoxelMapRenderer {
                 }
             }
             
-            // Night Mode Lighting Logic
-            if (ClientSettings.isNightMode && lights != null && i < lights.length) {
+            // Night Mode Lighting Logic (or Underground Mode)
+            boolean useNightMode = ClientSettings.isNightMode || isUnderground;
+            
+            if (useNightMode && lights != null && i < lights.length) {
                 int lightLevel = lights[i];
                 
                 // Add light level contribution (up to 1.0)
@@ -368,24 +386,245 @@ public class VoxelMapRenderer {
                 renderBox(buf, pose, rx, ry - 0.2, rz, 0.2f, 0.6f, 0.2f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
             } else if (renderType == 2) { // RENDER_LANTERN
                 // Lantern: Metal Top, Color Bottom
-                // Total height ~0.5. Width ~0.35.
                 
-                // 1. Bottom Light Part
-                // Pos: ry - 0.3 (Lower part). Height 0.4.
-                renderBox(buf, pose, rx, ry - 0.3, rz, 0.3f, 0.4f, 0.3f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                // 1. Bottom Light Part (Main Body)
+                // More rectangular and taller as requested.
+                // Old: ry - 0.3, Height 0.4.
+                // New: Start lower (ry - 0.4), Height 0.5. Width 0.35.
+                renderBox(buf, pose, rx, ry - 0.4, rz, 0.35f, 0.5f, 0.35f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
                 
-                // 2. Top Metal Part
-                // Pos: ry - 0.05 (Top cap). Height 0.1. Wider cap.
-                // Color: Dark Gray (0x444444) -> r=68, g=68, b=68
+                // Metal Color: Dark Gray
                 float metalR = 68 / 255.0f;
                 float metalG = 68 / 255.0f;
                 float metalB = 68 / 255.0f;
+
+                // 2. Middle Metal Ring (Top Cap)
+                // Pos: ry + 0.1 (Above body). Height 0.05. Slightly wider.
+                renderBox(buf, pose, rx, ry + 0.1, rz, 0.4f, 0.05f, 0.4f, metalR * brightness, metalG * brightness, metalB * brightness, alpha);
+
+                // 3. Top Metal Handle/Box (Extra Grey Part)
+                // Pos: ry + 0.15 (Above ring). Height 0.1. Narrower.
+                // This adds the "extra grey part on top" requested.
+                renderBox(buf, pose, rx, ry + 0.15, rz, 0.2f, 0.1f, 0.2f, metalR * brightness, metalG * brightness, metalB * brightness, alpha);
                 
-                renderBox(buf, pose, rx, ry - 0.05, rz, 0.35f, 0.1f, 0.35f, metalR * brightness, metalG * brightness, metalB * brightness, alpha);
+            } else if (renderType == 3 || renderType == 4) { // RENDER_CAVE_VINE or RENDER_CAVE_VINE_WITH_BERRIES
+                // Cave Vine Logic
+                // 1. Brown Stem/Root (Inner Core)
+                // Thin, full height to connect blocks.
+                float stemR = 89 / 255.0f;
+                float stemG = 61 / 255.0f;
+                float stemB = 41 / 255.0f;
+                renderBox(buf, pose, rx, ry, rz, 0.15f, 1.0f, 0.15f, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
+
+                // 2. Green Foliage (Outer Layer)
+                // Slightly shorter than full block to reveal stem at joints, giving a "connected" look.
+                // Size: 0.45 width, 0.8 height.
+                float vineR = 92 / 255.0f;
+                float vineG = 124 / 255.0f;
+                float vineB = 53 / 255.0f;
+                renderBox(buf, pose, rx, ry + 0.1, rz, 0.45f, 0.8f, 0.45f, vineR * brightness, vineG * brightness, vineB * brightness, alpha);
                 
-            } else {
-                // Render block as a box (1.0 size for solid terrain)
-                renderBox(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                // If it has berries (Type 4), render small orange cubes
+                if (renderType == 4) {
+                    // Berries: Small orange glowing boxes.
+                    float berryR = 1.0f; // Bright Orange/Yellow
+                    float berryG = 0.6f;
+                    float berryB = 0.0f;
+                    
+                    // Boost brightness for glow
+                    float berryBrightness = Math.max(brightness, 0.9f); 
+                    float bSize = 0.15f;
+                    
+                    // Berry 1 (Lower, Right-ish)
+                    // Offset randomly to look organic.
+                    // X + 0.25, Y - 0.1, Z + 0.1
+                    renderBox(buf, pose, rx + 0.25, ry - 0.1, rz + 0.1, bSize, bSize, bSize, berryR * berryBrightness, berryG * berryBrightness, berryB * berryBrightness, alpha);
+                    
+                    // Berry 2 (Higher, Left-ish)
+                    // X - 0.25, Y + 0.3, Z - 0.1
+                    // Staggered height and opposite side
+                    renderBox(buf, pose, rx - 0.25, ry + 0.3, rz - 0.1, bSize, bSize, bSize, berryR * berryBrightness, berryG * berryBrightness, berryB * berryBrightness, alpha);
+                }
+
+            } else if (renderType == 5) { // RENDER_SUGAR_CANE
+                  // Sugar Cane: 3 Green Tubes with Borders
+                  float caneR = 150 / 255.0f;
+                  float caneG = 210 / 255.0f;
+                  float caneB = 100 / 255.0f;
+                  
+                  // Dark Green Border Color (Lighter now)
+                  float bR = 60 / 255.0f;
+                  float bG = 100 / 255.0f;
+                  float bB = 40 / 255.0f;
+                  
+                  float tubeSize = 0.25f;
+                  float bThick = 0.03f; // Border thickness
+                  
+                  // Tube Offsets: {x, z}
+                  float[][] offsets = {
+                      {-0.2f, -0.1f}, // Left-Back
+                      {0.2f, -0.1f},  // Right-Back
+                      {0.0f, 0.2f}    // Front-Center
+                  };
+                  
+                  for (float[] off : offsets) {
+                      double tx = rx + off[0];
+                      double tz = rz + off[1];
+                      
+                      // Main Tube
+                      renderBox(buf, pose, tx, ry, tz, tubeSize, 1.0f, tubeSize, caneR * brightness, caneG * brightness, caneB * brightness, alpha);
+                      
+                      // Borders
+                      // West
+                      renderBox(buf, pose, tx - tubeSize/2 - bThick/2, ry, tz, bThick, 1.0f, tubeSize + 2*bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
+                      // East
+                      renderBox(buf, pose, tx + tubeSize/2 + bThick/2, ry, tz, bThick, 1.0f, tubeSize + 2*bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
+                      // North (Between W/E)
+                      renderBox(buf, pose, tx, ry, tz - tubeSize/2 - bThick/2, tubeSize, 1.0f, bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
+                      // South (Between W/E)
+                      renderBox(buf, pose, tx, ry, tz + tubeSize/2 + bThick/2, tubeSize, 1.0f, bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
+                  }
+                  
+             } else if (renderType == 6) { // RENDER_CACTUS
+                 // Cactus: Thinner body + Spines + Vertical Stripes
+                 // Body Size: 14/16 = 0.875
+                 float bodySize = 0.875f;
+                 
+                 // Use block color (usually green)
+                 float baseR = (r * brightness) / 255.0f;
+                 float baseG = (g * brightness) / 255.0f;
+                 float baseB = (b * brightness) / 255.0f;
+                 
+                 renderBox(buf, pose, rx, ry, rz, bodySize, 1.0f, bodySize, baseR, baseG, baseB, alpha);
+                 
+                 // Vertical Dark Stripes (Ribs)
+                 // Darker green: Multiply by 0.6
+                 float stripeR = baseR * 0.6f;
+                 float stripeG = baseG * 0.6f;
+                 float stripeB = baseB * 0.6f;
+                 
+                 float sW = 0.1f; // Stripe Width
+                 float sD = 0.02f; // Stripe Depth (Protrusion)
+                 float sOff = bodySize / 2.0f + (sD / 2.0f); // Slightly outside
+                 
+                 // Z- Face
+                 renderBox(buf, pose, rx - 0.2, ry, rz - sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx + 0.2, ry, rz - sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
+                 
+                 // Z+ Face
+                 renderBox(buf, pose, rx - 0.2, ry, rz + sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx + 0.2, ry, rz + sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
+                 
+                 // X- Face (Rotated)
+                 renderBox(buf, pose, rx - sOff, ry, rz - 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx - sOff, ry, rz + 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
+                 
+                 // X+ Face (Rotated)
+                 renderBox(buf, pose, rx + sOff, ry, rz - 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx + sOff, ry, rz + 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
+
+                 // Spines (Thorns)
+                 float spineLen = 0.1f;
+                 float spineThick = 0.05f;
+                 float spineR = 0.9f; 
+                 float spineG = 0.9f;
+                 float spineB = 0.8f;
+                 
+                 float offset = bodySize / 2.0f; 
+                 
+                 // Face 1 (Z-): 2 Spines (Centered between stripes)
+                 renderBox(buf, pose, rx, ry + 0.25, rz - offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
+                 renderBox(buf, pose, rx, ry - 0.25, rz - offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
+
+                 // Face 2 (Z+): 2 Spines
+                 renderBox(buf, pose, rx, ry + 0.25, rz + offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
+                 renderBox(buf, pose, rx, ry - 0.25, rz + offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
+
+                 // Face 3 (X-): 2 Spines
+                 renderBox(buf, pose, rx - offset, ry + 0.25, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
+                 renderBox(buf, pose, rx - offset, ry - 0.25, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
+
+                 // Face 4 (X+): 2 Spines
+                 renderBox(buf, pose, rx + offset, ry + 0.25, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
+                  renderBox(buf, pose, rx + offset, ry - 0.25, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
+ 
+             } else if (renderType == 7) { // RENDER_SAPLING
+                // Sapling: Small Brown Block (0.4x0.4x0.4)
+                float sSize = 0.4f;
+                // Brown Wood Color
+                float woodR = 120 / 255.0f;
+                float woodG = 80 / 255.0f;
+                float woodB = 40 / 255.0f;
+                
+                // Position: Bottom Center
+                // rx, ry, rz is block center.
+                // To put on floor (y-0.5), we need center at (y-0.5) + (sSize/2) = y - 0.5 + 0.2 = y - 0.3
+                 renderBox(buf, pose, rx, ry - 0.3, rz, sSize, sSize, sSize, woodR * brightness, woodG * brightness, woodB * brightness, alpha);
+                  
+              } else if (renderType == 8) { // RENDER_BAMBOO
+                 // Bamboo: Single Green Tube, varying thickness but usually thin
+                 float bambooSize = 0.25f; // Thin stalk
+                 
+                 // Bamboo Green
+                 float bamR = 100 / 255.0f;
+                 float bamG = 180 / 255.0f;
+                 float bamB = 60 / 255.0f;
+                 
+                 // Render Stalk (Full Height)
+                 renderBox(buf, pose, rx, ry, rz, bambooSize, 1.0f, bambooSize, bamR * brightness, bamG * brightness, bamB * brightness, alpha);
+                 
+                 // Add small leaves? (Optional, maybe later if requested)
+                 // For now just the "tube upwards" as requested.
+                 
+              } else if (renderType == 9) { // RENDER_POTTED_PLANT
+                 // 1. Flower Pot: Brown Square at bottom
+                 float potR = 180 / 255.0f; // Terracotta-ish
+                 float potG = 100 / 255.0f;
+                 float potB = 80 / 255.0f;
+                 
+                 float potSize = 0.35f;
+                 float potHeight = 0.3f;
+                 
+                 // Center Y for Pot: Bottom (-0.5) + Half Height (0.15) = -0.35
+                 renderBox(buf, pose, rx, ry - 0.35, rz, potSize, potHeight, potSize, potR * brightness, potG * brightness, potB * brightness, alpha);
+                 
+                 // 2. Plant Inside: Small Block with Specific Color
+                 // Use the passed r, g, b values which come from ChunkScanner's getPottedPlantColor
+                 float plantSize = 0.25f;
+                 
+                 // Center Y for Plant: Top of Pot (-0.2) + Half Plant (0.125) = -0.075
+                renderBox(buf, pose, rx, ry - 0.075, rz, plantSize, plantSize, plantSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+
+             } else if (renderType == 10) { // RENDER_FLOWER_POT
+                 // Empty Flower Pot
+                 float potR = 180 / 255.0f; // Terracotta-ish
+                 float potG = 100 / 255.0f;
+                 float potB = 80 / 255.0f;
+                 
+                 float potSize = 0.35f;
+                 float potHeight = 0.3f;
+                 
+                 renderBox(buf, pose, rx, ry - 0.35, rz, potSize, potHeight, potSize, potR * brightness, potG * brightness, potB * brightness, alpha);
+                 
+              } else if (renderType == 11) { // RENDER_GRASS
+                 // Grass/Fern: Render as multiple small blades/tufts to give "relief"
+                 // Use the block color (usually biome green) passed in r,g,b
+                 
+                 float bladeW = 0.1f;
+                 float bladeH = 0.45f; // Short grass height
+                 
+                 // Blade 1 (Left-Back)
+                renderBox(buf, pose, rx - 0.2, ry, rz - 0.2, bladeW, bladeH, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                // Blade 2 (Right-Front)
+                renderBox(buf, pose, rx + 0.2, ry, rz + 0.2, bladeW, bladeH * 0.8f, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                // Blade 3 (Left-Front)
+                renderBox(buf, pose, rx - 0.15, ry, rz + 0.15, bladeW, bladeH * 0.9f, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                // Blade 4 (Right-Back)
+                renderBox(buf, pose, rx + 0.1, ry, rz - 0.1, bladeW, bladeH * 1.1f, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+
+              } else {
+                 // Render block as a box (1.0 size for solid terrain)
+                renderBlockWithBorders(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha, exposedFaces);
             }
         }
     }
@@ -436,6 +675,20 @@ public class VoxelMapRenderer {
             } else if (e instanceof Villager) {
                 if (!ClientSettings.showVillagers) continue;
                 renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.6f, 1.8f, 0.6f, 0.6f, 0.4f, 0.3f, 1.0f);
+            } else if (e instanceof Squid) {
+                if (!ClientSettings.showAnimals) continue;
+                
+                // Determine if it's a Glow Squid
+                boolean isGlowSquid = (e instanceof GlowSquid);
+                
+                if (isGlowSquid) {
+                    // Glow Squid: Bright Cyan/Aqua
+                    // Emphasize luminosity with bright colors
+                    renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.6f, 0.6f, 0.6f, 0.0f, 1.0f, 1.0f, 1.0f);
+                } else {
+                    // Normal Squid: Dark Blue
+                    renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.6f, 0.6f, 0.6f, 0.2f, 0.2f, 0.6f, 1.0f);
+                }
             } else if (e instanceof Animal) {
                 if (!ClientSettings.showAnimals) continue;
                 renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f);
@@ -489,6 +742,124 @@ public class VoxelMapRenderer {
         BufferUploader.drawWithShader(buf.end());
         
         poseStack.popPose();
+    }
+
+    private static void renderBlockWithBorders(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float r, float g, float b, float a, int exposedFaces) {
+        float minX = (float)(x - w/2);
+        float maxX = (float)(x + w/2);
+        float minY = (float)y;
+        float maxY = (float)(y + h);
+        float minZ = (float)(z - d/2);
+        float maxZ = (float)(z + d/2);
+        
+        int red = (int)(r * 255);
+        int green = (int)(g * 255);
+        int blue = (int)(b * 255);
+        int alpha = (int)(a * 255);
+        
+        // Bit 3: Up (+y) - Top Face
+        if ((exposedFaces & 8) != 0) {
+            buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+            
+            // Render Borders on Top Face
+            // Border color: Black Opaque (for visibility)
+            int br = 0, bg = 0, bb = 0, ba = 255;
+            float bSize = 0.125f; // 1/8th of a block
+            float yOff = 0.02f; // Increased offset to prevent z-fighting
+            
+            // West Edge (Bit 0)
+            if ((exposedFaces & 1) != 0) {
+                 // CCW Order: Top-Left -> Bottom-Left -> Bottom-Right -> Top-Right
+                 buf.vertex(pose, minX, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
+                 buf.vertex(pose, minX, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
+                 buf.vertex(pose, minX + bSize, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
+                 buf.vertex(pose, minX + bSize, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
+            }
+            
+            // East Edge (Bit 1)
+            if ((exposedFaces & 2) != 0) {
+                 // CCW Order
+                 buf.vertex(pose, maxX - bSize, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
+                 buf.vertex(pose, maxX - bSize, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
+                 buf.vertex(pose, maxX, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
+                 buf.vertex(pose, maxX, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
+            }
+            
+            // North Edge (Bit 4)
+            if ((exposedFaces & 16) != 0) {
+                  // CCW Order
+                  buf.vertex(pose, minX, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
+                  buf.vertex(pose, minX, maxY + yOff, minZ + bSize).color(br, bg, bb, ba).endVertex();
+                  buf.vertex(pose, maxX, maxY + yOff, minZ + bSize).color(br, bg, bb, ba).endVertex();
+                  buf.vertex(pose, maxX, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
+            }
+            
+            // South Edge (Bit 5)
+            if ((exposedFaces & 32) != 0) {
+                  // CCW Order
+                  buf.vertex(pose, minX, maxY + yOff, maxZ - bSize).color(br, bg, bb, ba).endVertex();
+                  buf.vertex(pose, minX, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
+                  buf.vertex(pose, maxX, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
+                  buf.vertex(pose, maxX, maxY + yOff, maxZ - bSize).color(br, bg, bb, ba).endVertex();
+            }
+        }
+        
+        // Bit 2: Down (-y) - Bottom Face
+        if ((exposedFaces & 4) != 0) {
+            buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        }
+        
+        // Bit 4: North (-z) - Front/Back? 
+        // Logic says North is -z.
+        // In renderBox: "Front" was minZ. "Back" was maxZ. 
+        // Wait, Front usually means +z or -z depending on convention.
+        // In renderBox:
+        // Front: minZ face? (lines 520-523 uses minZ for Z coords). Yes.
+        // Back: maxZ face? (lines 526-529 uses maxZ). Yes.
+        
+        // So North (-z) corresponds to "Front" in renderBox code?
+        // Let's check renderBox "Front":
+        // buf.vertex(pose, maxX, maxY, minZ)...
+        // Yes, all Z are minZ. So "Front" is North face (-z).
+        
+        if ((exposedFaces & 16) != 0) { // North
+            buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        }
+        
+        // Bit 5: South (+z) - Back
+        if ((exposedFaces & 32) != 0) { // South
+            buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        }
+        
+        // Bit 0: West (-x) - Left?
+        // In renderBox "Left": all X are minX. Yes, West.
+        if ((exposedFaces & 1) != 0) { // West
+            buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        }
+        
+        // Bit 1: East (+x) - Right?
+        // In renderBox "Right": all X are maxX. Yes, East.
+        if ((exposedFaces & 2) != 0) { // East
+            buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        }
     }
 
     public static void renderBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float r, float g, float b, float a) {
