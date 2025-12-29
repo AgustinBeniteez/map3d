@@ -3,7 +3,18 @@ package com.agustinbenitez.voxelview3d.world;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FlowerBlock;
 import net.minecraft.world.level.block.FlowerPotBlock;
+import net.minecraft.world.level.block.GlowLichenBlock;
+import net.minecraft.world.level.block.VineBlock;
+import net.minecraft.world.level.block.PipeBlock;
+import net.minecraft.world.level.block.MultifaceBlock;
+import net.minecraft.world.level.block.TallFlowerBlock;
+import net.minecraft.world.level.block.BaseFireBlock;
+import net.minecraft.world.level.block.RedstoneLampBlock;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.state.properties.DoorHingeSide;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
@@ -14,7 +25,23 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import net.minecraft.world.level.block.ButtonBlock;
+import net.minecraft.world.level.block.LeverBlock;
+import net.minecraft.world.level.block.RedStoneWireBlock;
+import net.minecraft.world.level.block.IronBarsBlock;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.state.properties.AttachFace;
+import net.minecraft.world.level.block.state.properties.RedstoneSide;
 import net.minecraft.world.level.block.CaveVines;
+
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.world.level.block.state.properties.StairsShape;
+import net.minecraft.world.level.block.TrapDoorBlock;
+import net.minecraft.world.level.block.AbstractGlassBlock;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 public class ChunkScanner {
     
@@ -44,6 +71,24 @@ public class ChunkScanner {
     public static final int RENDER_POTTED_PLANT = 9;
     public static final int RENDER_FLOWER_POT = 10;
     public static final int RENDER_GRASS = 11;
+    public static final int RENDER_FLOWER = 12;
+    public static final int RENDER_TALL_FLOWER = 13;
+    public static final int RENDER_MUSHROOM = 14;
+    public static final int RENDER_GLOW_LICHEN = 15;
+    public static final int RENDER_VINE = 16;
+    public static final int RENDER_FIRE = 17;
+    public static final int RENDER_REDSTONE_LAMP = 18;
+    public static final int RENDER_DOOR = 19;
+    public static final int RENDER_BUTTON = 20;
+    public static final int RENDER_LEVER = 21;
+    public static final int RENDER_REDSTONE_WIRE = 22;
+    public static final int RENDER_IRON_BARS = 23;
+    public static final int RENDER_FENCE = 24;
+    public static final int RENDER_STAIRS = 25;
+    public static final int RENDER_SLAB = 26;
+    public static final int RENDER_TRAPDOOR = 27;
+    public static final int RENDER_GLASS_PANE = 28;
+    public static final int RENDER_GLASS_BLOCK = 29;
     
     private static final Map<ChunkPos, ScannedChunk> CHUNK_DATA = new HashMap<>();
 
@@ -144,12 +189,200 @@ public class ChunkScanner {
                                     } else {
                                         renderType = RENDER_POTTED_PLANT;
                                     }
+                                } else if (state.getBlock() instanceof FlowerBlock) {
+                                    renderType = RENDER_FLOWER;
+                                } else if (state.getBlock() instanceof TallFlowerBlock) {
+                                    renderType = RENDER_TALL_FLOWER;
+                                } else if (state.getBlock() == Blocks.BROWN_MUSHROOM || state.getBlock() == Blocks.RED_MUSHROOM) {
+                                    renderType = RENDER_MUSHROOM;
                                 } else if (state.getBlock() == Blocks.GRASS 
                                         || state.getBlock() == Blocks.TALL_GRASS 
                                         || state.getBlock() == Blocks.FERN 
                                         || state.getBlock() == Blocks.LARGE_FERN) {
                                     renderType = RENDER_GRASS;
+                                } else if (state.getBlock() instanceof GlowLichenBlock) {
+                                     renderType = RENDER_GLOW_LICHEN;
+                                     // Override exposedFaces with actual attachment faces
+                                     // GlowLichen uses PipeBlock properties (MultifaceBlock)
+                                     exposedFaces = 0;
+                                     if (state.getValue(PipeBlock.WEST)) exposedFaces |= 1;
+                                     if (state.getValue(PipeBlock.EAST)) exposedFaces |= 2;
+                                     if (state.getValue(PipeBlock.DOWN)) exposedFaces |= 4;
+                                     if (state.getValue(PipeBlock.UP)) exposedFaces |= 8;
+                                     if (state.getValue(PipeBlock.NORTH)) exposedFaces |= 16;
+                                     if (state.getValue(PipeBlock.SOUTH)) exposedFaces |= 32;
+                                 } else if (state.getBlock() instanceof VineBlock) {
+                                    renderType = RENDER_VINE;
+                                    exposedFaces = 0;
+                                    if (state.getValue(VineBlock.WEST)) exposedFaces |= 1;
+                                    if (state.getValue(VineBlock.EAST)) exposedFaces |= 2;
+                                    if (state.getValue(VineBlock.UP)) exposedFaces |= 8;
+                                    if (state.getValue(VineBlock.NORTH)) exposedFaces |= 16;
+                                    if (state.getValue(VineBlock.SOUTH)) exposedFaces |= 32;
+                                } else if (state.getBlock() instanceof BaseFireBlock) {
+                                    renderType = RENDER_FIRE;
+                                } else if (state.getBlock() == Blocks.REDSTONE_LAMP) {
+                                    renderType = RENDER_REDSTONE_LAMP;
+                                } else if (state.getBlock() instanceof DoorBlock) {
+                                    renderType = RENDER_DOOR;
+                                    // Pack Door Data into exposedFaces (6 bits available)
+                                    // Bit 0-1: Facing (0:S, 1:W, 2:N, 3:E) - Horizontal ordinal?
+                                    // Direction.ordinal: DOWN, UP, NORTH(2), SOUTH(3), WEST(4), EAST(5)
+                                    // We can use 2D index: 0=South, 1=West, 2=North, 3=East
+                                    exposedFaces = 0;
+                                    
+                                    int facing = 0;
+                                    switch(state.getValue(DoorBlock.FACING)) {
+                                        case SOUTH: facing = 0; break;
+                                        case WEST: facing = 1; break;
+                                        case NORTH: facing = 2; break;
+                                        case EAST: facing = 3; break;
+                                    }
+                                    exposedFaces |= (facing & 3); // Bits 0-1
+                                    
+                                    if (state.getValue(DoorBlock.OPEN)) exposedFaces |= 4; // Bit 2
+                                    if (state.getValue(DoorBlock.HINGE) == DoorHingeSide.RIGHT) exposedFaces |= 8; // Bit 3
+                                    if (state.getValue(DoorBlock.HALF) == DoubleBlockHalf.UPPER) exposedFaces |= 16; // Bit 4
+                                } else if (state.getBlock() instanceof ButtonBlock) {
+                                    renderType = RENDER_BUTTON;
+                                    exposedFaces = 0;
+                                    // Pack Face: Floor(0), Wall(1), Ceiling(2) -> 2 bits
+                                    int face = 0;
+                                    AttachFace af = state.getValue(ButtonBlock.FACE);
+                                    if (af == AttachFace.WALL) face = 1;
+                                    else if (af == AttachFace.CEILING) face = 2;
+                                    exposedFaces |= (face & 3); // Bits 0-1
+                                    
+                                    // Pack Facing: S(0), W(1), N(2), E(3) -> 2 bits
+                                    int facing = 0;
+                                    switch(state.getValue(ButtonBlock.FACING)) {
+                                        case SOUTH: facing = 0; break;
+                                        case WEST: facing = 1; break;
+                                        case NORTH: facing = 2; break;
+                                        case EAST: facing = 3; break;
+                                    }
+                                    exposedFaces |= ((facing & 3) << 2); // Bits 2-3
+                                    
+                                    if (state.getValue(ButtonBlock.POWERED)) exposedFaces |= 16; // Bit 4
+                                    
+                                } else if (state.getBlock() instanceof LeverBlock) {
+                                    renderType = RENDER_LEVER;
+                                    exposedFaces = 0;
+                                    // Same as Button
+                                    int face = 0;
+                                    AttachFace af = state.getValue(LeverBlock.FACE);
+                                    if (af == AttachFace.WALL) face = 1;
+                                    else if (af == AttachFace.CEILING) face = 2;
+                                    exposedFaces |= (face & 3); // Bits 0-1
+                                    
+                                    int facing = 0;
+                                    switch(state.getValue(LeverBlock.FACING)) {
+                                        case SOUTH: facing = 0; break;
+                                        case WEST: facing = 1; break;
+                                        case NORTH: facing = 2; break;
+                                        case EAST: facing = 3; break;
+                                    }
+                                    exposedFaces |= ((facing & 3) << 2); // Bits 2-3
+                                    
+                                    if (state.getValue(LeverBlock.POWERED)) exposedFaces |= 16; // Bit 4
+                                    
+                                } else if (state.getBlock() instanceof RedStoneWireBlock) {
+                                    renderType = RENDER_REDSTONE_WIRE;
+                                    exposedFaces = 0;
+                                    // Pack Connections
+                                    // Bit 0: North
+                                    // Bit 1: South
+                                    // Bit 2: East
+                                    // Bit 3: West
+                                    
+                                    if (state.getValue(RedStoneWireBlock.NORTH) != RedstoneSide.NONE) exposedFaces |= 1;
+                                    if (state.getValue(RedStoneWireBlock.SOUTH) != RedstoneSide.NONE) exposedFaces |= 2;
+                                    if (state.getValue(RedStoneWireBlock.EAST) != RedstoneSide.NONE) exposedFaces |= 4;
+                                    if (state.getValue(RedStoneWireBlock.WEST) != RedstoneSide.NONE) exposedFaces |= 8;
+                                } else if (state.getBlock() instanceof IronBarsBlock) {
+                                    renderType = RENDER_IRON_BARS;
+                                    exposedFaces = 0;
+                                    if (state.getValue(IronBarsBlock.NORTH)) exposedFaces |= 1;
+                                    if (state.getValue(IronBarsBlock.SOUTH)) exposedFaces |= 2;
+                                    if (state.getValue(IronBarsBlock.EAST)) exposedFaces |= 4;
+                                    if (state.getValue(IronBarsBlock.WEST)) exposedFaces |= 8;
+                                } else if (state.getBlock() instanceof FenceBlock) {
+                                    renderType = RENDER_FENCE;
+                                    exposedFaces = 0;
+                                    if (state.getValue(FenceBlock.NORTH)) exposedFaces |= 1;
+                                    if (state.getValue(FenceBlock.SOUTH)) exposedFaces |= 2;
+                                    if (state.getValue(FenceBlock.EAST)) exposedFaces |= 4;
+                                    if (state.getValue(FenceBlock.WEST)) exposedFaces |= 8;
+                                } else if (state.getBlock() instanceof StairBlock) {
+                                    renderType = RENDER_STAIRS;
+                                    exposedFaces = 0;
+                                    
+                                    // Pack Facing: S(0), W(1), N(2), E(3)
+                                    int facing = 0;
+                                    switch(state.getValue(StairBlock.FACING)) {
+                                        case SOUTH: facing = 0; break;
+                                        case WEST: facing = 1; break;
+                                        case NORTH: facing = 2; break;
+                                        case EAST: facing = 3; break;
+                                    }
+                                    exposedFaces |= (facing & 3); // Bits 0-1
+                                    
+                                    // Pack Half: Bottom(0), Top(1)
+                                    if (state.getValue(StairBlock.HALF) == Half.TOP) exposedFaces |= 4; // Bit 2
+                                    
+                                    // Pack Shape: Straight(0), InnerL(1), InnerR(2), OuterL(3), OuterR(4)
+                                    int shape = 0;
+                                    switch(state.getValue(StairBlock.SHAPE)) {
+                                        case STRAIGHT: shape = 0; break;
+                                        case INNER_LEFT: shape = 1; break;
+                                        case INNER_RIGHT: shape = 2; break;
+                                        case OUTER_LEFT: shape = 3; break;
+                                        case OUTER_RIGHT: shape = 4; break;
+                                    }
+                                    exposedFaces |= ((shape & 7) << 3); // Bits 3-5
+                                    
+                                } else if (state.getBlock() instanceof SlabBlock) {
+                                    renderType = RENDER_SLAB;
+                                    exposedFaces = 0;
+                                    
+                                    // Pack Type: Bottom(0), Top(1), Double(2)
+                                    int type = 0;
+                                    SlabType st = state.getValue(SlabBlock.TYPE);
+                                    if (st == SlabType.TOP) type = 1;
+                                    else if (st == SlabType.DOUBLE) type = 2;
+                                    
+                                    exposedFaces |= (type & 3); // Bits 0-1
+                                } else if (state.getBlock() instanceof TrapDoorBlock) {
+                                    renderType = RENDER_TRAPDOOR;
+                                    exposedFaces = 0;
+                                    
+                                    // Pack Facing: S(0), W(1), N(2), E(3)
+                                    int facing = 0;
+                                    switch(state.getValue(TrapDoorBlock.FACING)) {
+                                        case SOUTH: facing = 0; break;
+                                        case WEST: facing = 1; break;
+                                        case NORTH: facing = 2; break;
+                                        case EAST: facing = 3; break;
+                                    }
+                                    exposedFaces |= (facing & 3); // Bits 0-1
+                                    
+                                    // Pack Half: Bottom(0), Top(1)
+                                    if (state.getValue(TrapDoorBlock.HALF) == Half.TOP) exposedFaces |= 4; // Bit 2
+                                    
+                                    // Pack Open: False(0), True(1)
+                                    if (state.getValue(TrapDoorBlock.OPEN)) exposedFaces |= 8; // Bit 3
+                                } else if (state.getBlock().getDescriptionId().contains("glass_pane")) {
+                                    renderType = RENDER_GLASS_PANE;
+                                    exposedFaces = 0;
+                                    if (state.getValue(BlockStateProperties.NORTH)) exposedFaces |= 1;
+                                    if (state.getValue(BlockStateProperties.SOUTH)) exposedFaces |= 2;
+                                    if (state.getValue(BlockStateProperties.EAST)) exposedFaces |= 4;
+                                    if (state.getValue(BlockStateProperties.WEST)) exposedFaces |= 8;
+                                } else if (state.getBlock() instanceof AbstractGlassBlock) {
+                                    renderType = RENDER_GLASS_BLOCK;
+                                    // exposedFaces is already calculated based on transparency
                                 }
+
 
                                 // Check for Lava
                                 boolean isLava = (state.getBlock() == Blocks.LAVA);
@@ -158,7 +391,8 @@ public class ChunkScanner {
                                 // We store Y relative to minBuildHeight to save bits? 
                                 // Standard world height: -64 to 320. Range 384. Fits in 9 bits (512).
                                 int relY = worldY - minBuildHeight;
-                                int packed = (x & 0xF) | ((z & 0xF) << 4) | ((relY & 0x1FF) << 8) | ((renderType & 0xF) << 17) | ((exposedFaces & 0x3F) << 21);
+                                // Expand renderType to 5 bits (0-31) and shift exposedFaces to 22
+                                int packed = (x & 0xF) | ((z & 0xF) << 4) | ((relY & 0x1FF) << 8) | ((renderType & 0x1F) << 17) | ((exposedFaces & 0x3F) << 22);
                                 
                                 positions.add(packed);
                                 
@@ -189,6 +423,78 @@ public class ChunkScanner {
                                     // Get color from the potted content
                                     FlowerPotBlock pot = (FlowerPotBlock) state.getBlock();
                                     color = getPottedPlantColor(pot.getContent());
+                                } else if (renderType == RENDER_FLOWER || renderType == RENDER_TALL_FLOWER || renderType == RENDER_MUSHROOM) {
+                                    color = getPottedPlantColor(state.getBlock());
+                                } else if (renderType == RENDER_FIRE) {
+                                    if (state.getBlock() == Blocks.SOUL_FIRE) {
+                                        color = 0x33FFFF; // Cyan/Blue for Soul Fire
+                                    } else {
+                                        color = 0xFF6600; // Orange for regular Fire
+                                    }
+                                } else if (renderType == RENDER_REDSTONE_LAMP) {
+                                    boolean lit = state.getValue(RedstoneLampBlock.LIT);
+                                    if (lit) {
+                                        color = 0xFFFF99; // Light Yellow (Amarillo Claro)
+                                    } else {
+                                        color = 0x4A2B2B; // Dark Brown/Red
+                                    }
+                                } else if (state.getBlock() == Blocks.SHROOMLIGHT) {
+                                    color = 0xFF9933; // Bright Orange (More orange than default)
+                                } else if (renderType == RENDER_DOOR) {
+                                     // Use block map color
+                                     try {
+                                        color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
+                                     } catch (Exception e) { color = 0; }
+                                     
+                                     // Iron door override if needed (Map color is Iron, which is fine)
+                                     // Spruce door is Spruce color, etc.
+                                } else if (renderType == RENDER_REDSTONE_WIRE) {
+                                    if (state.getValue(RedStoneWireBlock.POWER) > 0) {
+                                        color = 0xFF0000; // Bright Red
+                                    } else {
+                                        color = 0x550000; // Dark Red
+                                    }
+                                } else if (renderType == RENDER_BUTTON) {
+                                    // Try map color first
+                                    try {
+                                        color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
+                                    } catch (Exception e) { color = 0; }
+                                    
+                                    if (color == 0) {
+                                        if (state.getBlock().getDescriptionId().contains("stone") || state.getBlock().getDescriptionId().contains("blackstone")) {
+                                            color = 0x808080; // Grey
+                                        } else {
+                                            color = 0x8F7748; // Wood Brown
+                                        }
+                                    }
+                                } else if (renderType == RENDER_LEVER) {
+                                    color = 0x808080; // Grey Base
+                                } else if (renderType == RENDER_IRON_BARS) {
+                                    color = 0xA0A0A0; // Iron Grey
+                                } else if (renderType == RENDER_FENCE) {
+                                    try {
+                                        color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
+                                    } catch (Exception e) { color = 0; }
+                                    if (color == 0) color = 0x8F7748; // Default Wood
+                                } else if (renderType == RENDER_TRAPDOOR) {
+                                    try {
+                                        color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
+                                    } catch (Exception e) { color = 0; }
+                                    if (color == 0) color = 0x8F7748; // Default Wood
+                                } else if (renderType == RENDER_GLASS_PANE) {
+                                    try {
+                                        color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
+                                    } catch (Exception e) { color = 0; }
+                                    if (color == 0) color = 0x88CCFF; // Light Blue/Cyan for clear glass
+                                } else if (renderType == RENDER_GLASS_BLOCK) {
+                                    if (state.getBlock() == Blocks.TINTED_GLASS) {
+                                        color = 0x2A2A2A; // Dark Grey/Black
+                                    } else {
+                                        try {
+                                            color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
+                                        } catch (Exception e) { color = 0; }
+                                        if (color == 0) color = 0x88CCFF; // Light Blue/Cyan for clear glass
+                                    }
                                 } else {
                                     try {
                                         color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
@@ -223,6 +529,14 @@ public class ChunkScanner {
                                         // Also for Lava
                                         if (state.getLightEmission() > 0) {
                                             light = Math.max(light, state.getLightEmission());
+                                        }
+                                        // Force full brightness for Lit Redstone Lamp to ensure glow
+                                        if (renderType == RENDER_REDSTONE_LAMP && state.getValue(RedstoneLampBlock.LIT)) {
+                                            light = 15;
+                                        }
+                                        // Force brightness for Shroomlight
+                                        if (state.getBlock() == Blocks.SHROOMLIGHT) {
+                                            light = 15;
                                         }
                                     }
                                 } catch (Exception e) {
@@ -321,6 +635,17 @@ public class ChunkScanner {
         if (block == Blocks.CACTUS) return 0x008000;
         if (block == Blocks.BAMBOO) return 0x008000;
         if (block == Blocks.DEAD_BUSH) return 0x6B4F28; // Dead Bush Brown
+        if (block == Blocks.TORCHFLOWER) return 0xFFA500; // Orange
+
+        if (block == Blocks.BROWN_MUSHROOM) return 0x967241; // Brown Mushroom
+        if (block == Blocks.RED_MUSHROOM) return 0xFF0000; // Red Mushroom
+
+        // Tall Flowers
+        if (block == Blocks.SUNFLOWER) return 0xFFFF00; // Yellow
+        if (block == Blocks.LILAC) return 0xC8A2C8; // Lilac
+        if (block == Blocks.ROSE_BUSH) return 0xFF0000; // Red
+        if (block == Blocks.PEONY) return 0xFFC0CB; // Pink
+        if (block == Blocks.PITCHER_PLANT) return 0x9370DB; // Medium Purple
 
         // Saplings (default brown/wood)
         if (block == Blocks.OAK_SAPLING 

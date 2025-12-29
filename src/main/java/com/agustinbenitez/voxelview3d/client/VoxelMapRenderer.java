@@ -23,6 +23,11 @@ import org.joml.Matrix4f;
 import java.util.HashMap;
 import java.util.Map;
 
+import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.entity.decoration.Painting;
+import net.minecraft.world.entity.decoration.PaintingVariant;
+import net.minecraft.core.Direction;
+
 public class VoxelMapRenderer {
 
     public static void renderMap(PoseStack poseStack, float zoom, float cameraPitch, float cameraYaw, boolean isHud, int renderRadius) {
@@ -62,14 +67,16 @@ public class VoxelMapRenderer {
         
         boolean isUnderground = false;
         
+        boolean isNether = mc.level != null && mc.level.dimension().location().getPath().contains("nether");
+
         if (mc.level != null) {
             int playerY = player.getBlockY();
             boolean canSeeSky = mc.level.canSeeSky(player.blockPosition());
             
             // Underground if can't see sky OR if deep in a hole (surface is significantly higher)
-            isUnderground = !canSeeSky;
+            isUnderground = !canSeeSky && !isNether; // Treat Nether separately or as "always cave" but with lava floor
             
-            if (!isUnderground) {
+            if (!isUnderground && !isNether) {
                  int x = player.getBlockX();
                  int z = player.getBlockZ();
                  
@@ -94,6 +101,19 @@ public class VoxelMapRenderer {
                 renderMinY = Math.max(minBuildHeight, playerY - 16); 
                 // Cut ceiling closer to head (playerY + 1 instead of +4) as requested
                 renderMaxY = Math.min(cutY, playerY + 1);
+            } else if (isNether) {
+                // Nether Mode
+                // We want to see down to the lava lake (y=31) even if we are high up
+                // User reported lava disappearing at high altitudes, so we ensure we render deep enough
+                // Using minBuildHeight ensures we see the lava lake and its shores/depth
+                int lavaLevel = minBuildHeight; 
+                
+                // If we are high, renderMinY should reach down to lavaLevel
+                renderMinY = Math.min(playerY - 32, lavaLevel);
+                renderMinY = Math.max(minBuildHeight, renderMinY);
+                
+                // Ceiling: just above player or cutY
+                renderMaxY = Math.min(cutY, playerY + 32); 
             } else {
                 // Surface Mode: Show deeper context
                 // Ensure we see down to sea level (60) when flying high, but keep culling when low
@@ -104,6 +124,13 @@ public class VoxelMapRenderer {
         
         // Render Chunks
         renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+        
+        // Nether Lava Floor Fallback
+        // If in Nether and we are high up, render a flat lava plane at y=31 to simulate the ocean
+        // in case chunks are missing or unloaded.
+        if (isNether) {
+            renderNetherLavaFloor(poseStack, player, renderRadius);
+        }
         
         // Render Entities
         renderEntities(poseStack, player, renderMinY, renderMaxY, renderRadius);
@@ -119,6 +146,59 @@ public class VoxelMapRenderer {
         // Reset state
         RenderSystem.enableCull();
         RenderSystem.disableDepthTest();
+    }
+
+    private static void renderNetherLavaFloor(PoseStack poseStack, Player player, int radius) {
+        double centerX = player.getX();
+        double centerZ = player.getZ();
+        double centerY = player.getY();
+        
+        // Lava surface level (bottom of block 31)
+        double planeY = 31.0 - centerY; 
+        
+        ChunkPos playerChunk = player.chunkPosition();
+        Map<ChunkPos, ChunkScanner.ScannedChunk> data = ChunkScanner.getData();
+
+        Tesselator tess = Tesselator.getInstance();
+        BufferBuilder buf = tess.getBuilder();
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        
+        // Lava Color: Bright Orange 0xFF6600
+        float r = 1.0f; 
+        float g = 0.4f;
+        float b = 0.0f;
+        float alpha = 1.0f;
+        
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        Matrix4f pose = poseStack.last().pose();
+        
+        // Iterate only loaded chunks within radius
+        if (radius > 0) {
+            for (int x = -radius; x <= radius; x++) {
+                for (int z = -radius; z <= radius; z++) {
+                     ChunkPos cp = new ChunkPos(playerChunk.x + x, playerChunk.z + z);
+                     
+                     // Only render lava floor if the chunk is actually loaded/scanned
+                     if (data.containsKey(cp)) {
+                         double rx = (cp.x * 16) - centerX;
+                         double rz = (cp.z * 16) - centerZ;
+                         
+                         float x1 = (float)rx;
+                         float z1 = (float)rz;
+                         float x2 = (float)(rx + 16.0);
+                         float z2 = (float)(rz + 16.0);
+                         float y = (float)planeY;
+
+                         buf.vertex(pose, x1, y, z1).color(r, g, b, alpha).endVertex();
+                         buf.vertex(pose, x1, y, z2).color(r, g, b, alpha).endVertex();
+                         buf.vertex(pose, x2, y, z2).color(r, g, b, alpha).endVertex();
+                         buf.vertex(pose, x2, y, z1).color(r, g, b, alpha).endVertex();
+                     }
+                }
+            }
+        }
+        
+        BufferUploader.drawWithShader(buf.end());
     }
 
     private static void renderWaypoints(PoseStack poseStack, Player player, float cameraYaw, float cameraPitch) {
@@ -305,8 +385,8 @@ public class VoxelMapRenderer {
             int x = packed & 0xF;
             int z = (packed >> 4) & 0xF;
             int relY = (packed >> 8) & 0x1FF;
-            int renderType = (packed >> 17) & 0xF;
-            int exposedFaces = (packed >> 21) & 0x3F;
+            int renderType = (packed >> 17) & 0x1F;
+            int exposedFaces = (packed >> 22) & 0x3F;
             
             // If exposedFaces is 0, it might be old data OR a block with no exposed faces (fully buried).
             // But fully buried blocks shouldn't be in the list?
@@ -601,10 +681,17 @@ public class VoxelMapRenderer {
                  float potG = 100 / 255.0f;
                  float potB = 80 / 255.0f;
                  
-                 float potSize = 0.35f;
-                 float potHeight = 0.3f;
+                 float potSize = 0.375f; // Exact MC size
+                 float potHeight = 0.375f; // Exact MC height
                  
-                 renderBox(buf, pose, rx, ry - 0.35, rz, potSize, potHeight, potSize, potR * brightness, potG * brightness, potB * brightness, alpha);
+                 // Center Y for Pot: Bottom (-0.5) + Half Height (0.1875) = -0.3125
+                 renderBox(buf, pose, rx, ry - 0.3125, rz, potSize, potHeight, potSize, potR * brightness, potG * brightness, potB * brightness, alpha);
+
+                 // Pot "Hole" (Dark Top)
+                 float holeSize = 0.25f; // Smaller than pot
+                 float holeHeight = 0.02f; // Very thin
+                 // On top of pot: Bottom (-0.5) + Height (0.375) + Half Hole (0.01) = -0.115
+                 renderBox(buf, pose, rx, ry - 0.115, rz, holeSize, holeHeight, holeSize, 0.2f * brightness, 0.1f * brightness, 0.1f * brightness, alpha);
                  
               } else if (renderType == 11) { // RENDER_GRASS
                  // Grass/Fern: Render as multiple small blades/tufts to give "relief"
@@ -622,8 +709,696 @@ public class VoxelMapRenderer {
                 // Blade 4 (Right-Back)
                 renderBox(buf, pose, rx + 0.1, ry, rz - 0.1, bladeW, bladeH * 1.1f, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
 
-              } else {
-                 // Render block as a box (1.0 size for solid terrain)
+             } else if (renderType == 12) { // RENDER_FLOWER
+                 // Small Flower: Stem + Head
+                 // Stem: Green
+                 float stemR = 50 / 255.0f;
+                 float stemG = 120 / 255.0f;
+                 float stemB = 50 / 255.0f;
+                 float stemW = 0.1f;
+                 float stemH = 0.4f;
+                 
+                 // Render Stem (Bottom)
+                 renderBox(buf, pose, rx, ry - 0.5 + (stemH/2), rz, stemW, stemH, stemW, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
+                 
+                 // Render Flower Head (Color passed in r,g,b)
+                 float headSize = 0.25f;
+                 // On top of stem
+                 renderBox(buf, pose, rx, ry - 0.5 + stemH + (headSize/2), rz, headSize, headSize, headSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 
+             } else if (renderType == 13) { // RENDER_TALL_FLOWER
+                 // Tall Flower (Lilac, Rose Bush, etc.)
+                 // Stem: Green core
+                 float stemR = 50 / 255.0f;
+                 float stemG = 120 / 255.0f;
+                 float stemB = 50 / 255.0f;
+                 float stemW = 0.15f;
+                 
+                 renderBox(buf, pose, rx, ry, rz, stemW, 1.0f, stemW, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
+                 
+                 // Flower/Foliage Clusters
+                 float bushSize = 0.5f;
+                 
+                 // Main Cluster
+                 renderBox(buf, pose, rx, ry, rz, bushSize, 0.8f, bushSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 
+                 // Add relief/texture
+                 float off = 0.2f;
+                 float smallSize = 0.25f;
+                 renderBox(buf, pose, rx + off, ry + 0.2, rz + off, smallSize, smallSize, smallSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 renderBox(buf, pose, rx - off, ry - 0.2, rz - off, smallSize, smallSize, smallSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+
+             } else if (renderType == 14) { // RENDER_MUSHROOM
+                 // Stem: White/Off-white
+                 float stemR = 240 / 255.0f;
+                 float stemG = 240 / 255.0f;
+                 float stemB = 240 / 255.0f;
+                 float stemW = 0.15f;
+                 float stemH = 0.2f;
+                 
+                 // Stem Position: Bottom (-0.5) + Half Height (0.1) = -0.4
+                 renderBox(buf, pose, rx, ry - 0.4, rz, stemW, stemH, stemW, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
+                 
+                 // Cap: Uses color passed in r,g,b
+                 float capSize = 0.4f;
+                 float capH = 0.2f;
+                 
+                 // Cap Position: On top of stem (-0.5 + 0.2 + 0.1) = -0.2
+                 renderBox(buf, pose, rx, ry - 0.2, rz, capSize, capH, capSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 
+                 // Add white spots for Red Mushroom if color is Red-ish
+                 if (r > 200 && g < 50 && b < 50) {
+                     // Simple spots
+                     float spotSize = 0.1f;
+                     float spotH = 0.02f;
+                     // Top center spot
+                     renderBox(buf, pose, rx, ry - 0.1 + 0.02, rz, spotSize, spotH, spotSize, 1.0f * brightness, 1.0f * brightness, 1.0f * brightness, alpha);
+                 }
+
+             } else if (renderType == 15) { // RENDER_GLOW_LICHEN
+                 // Thin layer on attached faces.
+                 // exposedFaces bits: 0:West, 1:East, 2:Down, 3:Up, 4:North, 5:South
+                 float thick = 0.05f;
+                 float size = 1.0f;
+                 float offset = 0.5f - (thick / 2.0f); // ~0.475
+
+                 // Glow Lichen is bright (ignore some shading?)
+                 // Boost brightness
+                 float lBri = Math.max(brightness, 0.9f);
+
+                 if ((exposedFaces & 1) != 0) { // West
+                     renderBox(buf, pose, rx - offset, ry, rz, thick, size, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                 }
+                 if ((exposedFaces & 2) != 0) { // East
+                     renderBox(buf, pose, rx + offset, ry, rz, thick, size, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                 }
+                 if ((exposedFaces & 4) != 0) { // Down
+                     renderBox(buf, pose, rx, ry - offset, rz, size, thick, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                 }
+                 if ((exposedFaces & 8) != 0) { // Up
+                     renderBox(buf, pose, rx, ry + offset, rz, size, thick, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                 }
+                 if ((exposedFaces & 16) != 0) { // North
+                     renderBox(buf, pose, rx, ry, rz - offset, size, size, thick, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                 }
+                 if ((exposedFaces & 32) != 0) { // South
+                     renderBox(buf, pose, rx, ry, rz + offset, size, size, thick, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                 }
+
+             } else if (renderType == 16) { // RENDER_VINE
+                 // Same as Lichen but standard brightness and green color usually
+                 float thick = 0.05f;
+                 float size = 1.0f;
+                 float offset = 0.5f - (thick / 2.0f);
+
+                 if ((exposedFaces & 1) != 0) renderBox(buf, pose, rx - offset, ry, rz, thick, size, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 if ((exposedFaces & 2) != 0) renderBox(buf, pose, rx + offset, ry, rz, thick, size, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 if ((exposedFaces & 4) != 0) renderBox(buf, pose, rx, ry - offset, rz, size, thick, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 if ((exposedFaces & 8) != 0) renderBox(buf, pose, rx, ry + offset, rz, size, thick, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 if ((exposedFaces & 16) != 0) renderBox(buf, pose, rx, ry, rz - offset, size, size, thick, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                if ((exposedFaces & 32) != 0) renderBox(buf, pose, rx, ry, rz + offset, size, size, thick, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+
+            } else if (renderType == 17) { // RENDER_FIRE
+                // Fire: 3 distinct flame pillars simulating 3D fire
+                float lBri = 1.0f; // Always bright
+                float flameW = 0.15f;
+                
+                // Calculate colors normalized
+                float fR = (r * lBri) / 255.0f;
+                float fG = (g * lBri) / 255.0f;
+                float fB = (b * lBri) / 255.0f;
+
+                // Center flame (Tallest)
+                // Height 0.8, Y-center = Bottom(-0.5) + 0.4 = -0.1
+                renderBox(buf, pose, rx, ry - 0.1, rz, flameW, 0.8f, flameW, fR, fG, fB, alpha);
+                
+                // Side flame 1 (Left-ish)
+                // Height 0.6, Y-center = Bottom(-0.5) + 0.3 = -0.2
+                renderBox(buf, pose, rx - 0.2, ry - 0.2, rz + 0.1, flameW, 0.6f, flameW, fR, fG, fB, alpha);
+                
+                // Side flame 2 (Right-ish)
+                // Height 0.5, Y-center = Bottom(-0.5) + 0.25 = -0.25
+                renderBox(buf, pose, rx + 0.15, ry - 0.25, rz - 0.15, flameW, 0.5f, flameW, fR, fG, fB, alpha);
+
+            } else if (renderType == 18) { // RENDER_REDSTONE_LAMP
+                // Framed Lamp
+                
+                // Inner Color: Passed in r, g, b
+                float innerR = (r * brightness) / 255.0f;
+                float innerG = (g * brightness) / 255.0f;
+                float innerB = (b * brightness) / 255.0f;
+                
+                // If Lit (Bright Yellow/Light Yellow), force full brightness
+                // Lit: r>200, g>200. Unlit: r~74.
+                boolean isLit = (r > 200 && g > 200);
+                if (isLit) {
+                    innerR = r / 255.0f;
+                    innerG = g / 255.0f;
+                    innerB = b / 255.0f;
+                }
+                
+                // Render Frame (Base Block)
+                // Color: Dark Brown (0x4A2B2B -> 0.29, 0.17, 0.17)
+                float frameR = 0.29f * brightness;
+                float frameG = 0.17f * brightness;
+                float frameB = 0.17f * brightness;
+                
+                // If unlit, the whole block is just this brown frame (maybe slightly lighter center?)
+                // User said: "if lit, change from brown to light yellow with brown border"
+                // So unlit is just brown.
+                
+                renderBox(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, frameR, frameG, frameB, alpha);
+                
+                if (isLit) {
+                    // Render 3 intersecting boxes to create "panels" on the faces with a border
+                    // Border width = (1.0 - 0.7) / 2 = 0.15 (approx 2.4 pixels)
+                    float panelW = 0.75f; // Slightly larger panels
+                    float thickness = 1.002f; // Slightly sticking out
+                    
+                    // Box 1: Sticks out X faces
+                    renderBox(buf, pose, rx, ry, rz, thickness, panelW, panelW, innerR, innerG, innerB, alpha);
+                    // Box 2: Sticks out Y faces
+                    renderBox(buf, pose, rx, ry, rz, panelW, thickness, panelW, innerR, innerG, innerB, alpha);
+                    // Box 3: Sticks out Z faces
+                    renderBox(buf, pose, rx, ry, rz, panelW, panelW, thickness, innerR, innerG, innerB, alpha);
+                }
+                
+            } else if (renderType == 19) { // RENDER_DOOR
+                // Door Rendering
+                // Decode exposedFaces for door data
+                // Bit 0-1: Facing (0:S, 1:W, 2:N, 3:E)
+                // Bit 2: Open
+                // Bit 3: Hinge
+                // Bit 4: Half
+                
+                int facing = exposedFaces & 3;
+                boolean isOpen = (exposedFaces & 4) != 0;
+                
+                // Color from block map color
+                float dR = (r * brightness) / 255.0f;
+                float dG = (g * brightness) / 255.0f;
+                float dB = (b * brightness) / 255.0f;
+                
+                // Thickness
+                float th = 0.1875f; // 3 pixels
+                
+                // Determine orientation
+                boolean isZAligned = false; // Default X-aligned
+                
+                // Logic:
+                // South(0) -> Closed: X-aligned (blocking Z)
+                // West(1)  -> Closed: Z-aligned (blocking X)
+                // North(2) -> Closed: X-aligned
+                // East(3)  -> Closed: Z-aligned
+                
+                if (facing == 1 || facing == 3) {
+                    isZAligned = true;
+                }
+                
+                // If Open, rotate 90 degrees
+                if (isOpen) {
+                    isZAligned = !isZAligned;
+                }
+                
+                if (isZAligned) {
+                    // Render along Z axis
+                    renderBox(buf, pose, rx, ry, rz, th, 1.0f, 1.0f, dR, dG, dB, alpha);
+                } else {
+                    // Render along X axis
+                    renderBox(buf, pose, rx, ry, rz, 1.0f, 1.0f, th, dR, dG, dB, alpha);
+                }
+
+            } else if (renderType == 20) { // RENDER_BUTTON
+                // Decode Face/Facing/Powered
+                // Bits 0-1: Face (0:Floor, 1:Wall, 2:Ceiling)
+                // Bits 2-3: Facing (0:S, 1:W, 2:N, 3:E)
+                // Bit 4: Powered
+                
+                int face = exposedFaces & 3;
+                int facing = (exposedFaces >> 2) & 3;
+                boolean powered = (exposedFaces & 16) != 0;
+                
+                // Geometry
+                // Unpressed: 6x2x4 (WxHxD) -> 0.375 x 0.125 x 0.25 (approx)
+                // Pressed: Height 0.0625
+                
+                float bW = 0.375f;
+                float bH = powered ? 0.0625f : 0.125f;
+                float bD = 0.25f; // Depth (along facing axis usually)
+                
+                // Default color from block (passed in r,g,b)
+                float bR = (r * brightness) / 255.0f;
+                float bG = (g * brightness) / 255.0f;
+                float bB = (b * brightness) / 255.0f;
+                
+                // Position logic
+                double bx = rx;
+                double by = ry;
+                double bz = rz;
+                
+                // Button usually 4x6x8 or similar? 
+                // Let's assume standard button size.
+                // 6 wide, 4 high, 8 deep? No, 6 wide, 2 thick, 4 deep.
+                
+                if (face == 0) { // Floor
+                    // On bottom face, Y shifted up slightly
+                    by = ry - 0.5 + (bH / 2.0);
+                    // Facing controls rotation (Width vs Depth alignment)
+                    // If Facing=North/South, Width is along X.
+                    // If Facing=West/East, Width is along Z.
+                    if (facing == 1 || facing == 3) { // West/East
+                         renderBox(buf, pose, bx, by, bz, bD, bH, bW, bR, bG, bB, alpha);
+                    } else {
+                         renderBox(buf, pose, bx, by, bz, bW, bH, bD, bR, bG, bB, alpha);
+                    }
+                } else if (face == 2) { // Ceiling
+                    // On top face, Y shifted down
+                    by = ry + 0.5 - (bH / 2.0);
+                    if (facing == 1 || facing == 3) { // West/East
+                         renderBox(buf, pose, bx, by, bz, bD, bH, bW, bR, bG, bB, alpha);
+                    } else {
+                         renderBox(buf, pose, bx, by, bz, bW, bH, bD, bR, bG, bB, alpha);
+                    }
+                } else { // Wall
+                    // Attached to side face.
+                    // Facing is Direction button points OUT.
+                    // North(2) -> Points North (Z-). Attached to South Face (Z=Max).
+                    // Wait, standard Facing property logic:
+                    // Facing=NORTH means "Button's front is North". Back is South. Attached to block at South?
+                    // No, button occupies block pos X. Attached to Neighbor X+1 (if Facing East? No).
+                    // If Facing=NORTH, attached to block at South (Z+1).
+                    // Position within THIS block: On South Face (Z=1)? No, Facing=NORTH means attached to SOUTH face of the block space.
+                    // So it's at Z ~ 0.5.
+                    // Let's verify: Button on North Wall of room. Room is South of wall. Button faces South.
+                    // Button Facing = SOUTH. Attached to North face of block?
+                    // Let's assume Facing = Direction of protrusion.
+                    
+                    float offset = 0.5f - (bH / 2.0f);
+                    
+                    if (facing == 2) { // North (Z-)
+                        bz = rz + offset; // Attached to South face (Z+) ?? No.
+                        // If facing North, it is on the South side of the block?
+                        // Or is it on the North side?
+                        // "Facing" usually means the normal of the face it's on? No.
+                        // Face=WALL, Facing=NORTH. Attached to the block to the SOUTH.
+                        // So inside THIS block, it's at Z=1.0 (South edge).
+                        // Let's try Z offset +0.4.
+                        renderBox(buf, pose, bx, by, rz + offset, bW, bD, bH, bR, bG, bB, alpha); // WxHxD -> W x H x Thickness
+                    } else if (facing == 0) { // South (Z+)
+                        renderBox(buf, pose, bx, by, rz - offset, bW, bD, bH, bR, bG, bB, alpha);
+                    } else if (facing == 1) { // West (X-)
+                        renderBox(buf, pose, rx + offset, by, bz, bH, bD, bW, bR, bG, bB, alpha);
+                    } else if (facing == 3) { // East (X+)
+                        renderBox(buf, pose, rx - offset, by, bz, bH, bD, bW, bR, bG, bB, alpha);
+                    }
+                }
+
+            } else if (renderType == 21) { // RENDER_LEVER
+                // Similar to Button but with Base and Handle
+                // Face/Facing/Powered
+                
+                int face = exposedFaces & 3;
+                int facing = (exposedFaces >> 2) & 3;
+                boolean powered = (exposedFaces & 16) != 0;
+                
+                // Colors
+                float cobbleR = 0.5f * brightness;
+                float cobbleG = 0.5f * brightness;
+                float cobbleB = 0.5f * brightness;
+                
+                float stickR = 0.4f * brightness;
+                float stickG = 0.3f * brightness;
+                float stickB = 0.2f * brightness;
+                
+                // Base: 6x8x2?
+                // Handle: Stick
+                
+                // Simplified: Render base flat box + stick sticking out
+                float baseW = 0.375f;
+                float baseTh = 0.15f; // Base thickness
+                float baseL = 0.5f;
+                
+                // For Wall: Base is vertical.
+                // For Floor/Ceiling: Base is horizontal.
+                
+                double lx = rx;
+                double ly = ry;
+                double lz = rz;
+                
+                // Stick properties
+                float sW = 0.1f;
+                float sL = 0.4f; // Stick length
+                
+                // State offset for stick (0.2 is roughly 45 degrees projection or shift)
+                // Wall: Up/Down. Floor/Ceiling: Forward/Back.
+                float stateOffset = powered ? -0.2f : 0.2f; 
+                
+                if (face == 0) { // Floor
+                    ly = ry - 0.5 + (baseTh / 2.0);
+                    // Base
+                    if (facing == 1 || facing == 3) {
+                        renderBox(buf, pose, lx, ly, lz, baseL, baseTh, baseW, cobbleR, cobbleG, cobbleB, alpha);
+                        // Stick moves along X
+                        // If facing West(1), "On" might be West? 
+                        // Let's just shift based on state.
+                        // Facing West(1) is X-. Facing East(3) is X+.
+                        float dir = (facing == 1) ? 1.0f : -1.0f; 
+                        renderBox(buf, pose, lx + (stateOffset * dir), ly + 0.2, lz, sW, sL, sW, stickR, stickG, stickB, alpha);
+                    } else {
+                        renderBox(buf, pose, lx, ly, lz, baseW, baseTh, baseL, cobbleR, cobbleG, cobbleB, alpha);
+                        // Stick moves along Z
+                        // Facing South(0) is Z+. Facing North(2) is Z-.
+                        float dir = (facing == 2) ? 1.0f : -1.0f;
+                        renderBox(buf, pose, lx, ly + 0.2, lz + (stateOffset * dir), sW, sL, sW, stickR, stickG, stickB, alpha);
+                    }
+                    
+                } else if (face == 2) { // Ceiling
+                    ly = ry + 0.5 - (baseTh / 2.0);
+                    if (facing == 1 || facing == 3) {
+                        renderBox(buf, pose, lx, ly, lz, baseL, baseTh, baseW, cobbleR, cobbleG, cobbleB, alpha);
+                        float dir = (facing == 1) ? 1.0f : -1.0f;
+                        renderBox(buf, pose, lx + (stateOffset * dir), ly - 0.2, lz, sW, sL, sW, stickR, stickG, stickB, alpha);
+                    } else {
+                        renderBox(buf, pose, lx, ly, lz, baseW, baseTh, baseL, cobbleR, cobbleG, cobbleB, alpha);
+                        float dir = (facing == 2) ? 1.0f : -1.0f;
+                        renderBox(buf, pose, lx, ly - 0.2, lz + (stateOffset * dir), sW, sL, sW, stickR, stickG, stickB, alpha);
+                    }
+                    
+                } else { // Wall
+                    float offset = 0.5f - (baseTh / 2.0f);
+                    
+                    // Wall levers toggle Up/Down usually.
+                    // Powered = Down (-Y). Unpowered = Up (+Y).
+                    // My stateOffset is: Powered(-0.2), Unpowered(0.2).
+                    // So just add stateOffset to Y.
+                    
+                    if (facing == 2) { // North (Attached South)
+                        renderBox(buf, pose, lx, ly, rz + offset, baseW, baseL, baseTh, cobbleR, cobbleG, cobbleB, alpha);
+                        renderBox(buf, pose, lx, ly + stateOffset, rz + offset - 0.2, sW, sL, sW, stickR, stickG, stickB, alpha); 
+                    } else if (facing == 0) { // South
+                        renderBox(buf, pose, lx, ly, rz - offset, baseW, baseL, baseTh, cobbleR, cobbleG, cobbleB, alpha);
+                        renderBox(buf, pose, lx, ly + stateOffset, rz - offset + 0.2, sW, sL, sW, stickR, stickG, stickB, alpha);
+                    } else if (facing == 1) { // West
+                        renderBox(buf, pose, rx + offset, ly, lz, baseTh, baseL, baseW, cobbleR, cobbleG, cobbleB, alpha);
+                        renderBox(buf, pose, rx + offset - 0.2, ly + stateOffset, lz, sW, sL, sW, stickR, stickG, stickB, alpha);
+                    } else if (facing == 3) { // East
+                        renderBox(buf, pose, rx - offset, ly, lz, baseTh, baseL, baseW, cobbleR, cobbleG, cobbleB, alpha);
+                        renderBox(buf, pose, rx - offset + 0.2, ly + stateOffset, lz, sW, sL, sW, stickR, stickG, stickB, alpha);
+                    }
+                }
+
+            } else if (renderType == 22) { // RENDER_REDSTONE_WIRE
+                // Connections: N(1), S(2), E(4), W(8)
+                boolean cN = (exposedFaces & 1) != 0;
+                boolean cS = (exposedFaces & 2) != 0;
+                boolean cE = (exposedFaces & 4) != 0;
+                boolean cW = (exposedFaces & 8) != 0;
+                
+                // Color: Red (passed in)
+                float rR = (r * brightness) / 255.0f;
+                float rG = (g * brightness) / 255.0f;
+                float rB = (b * brightness) / 255.0f;
+                
+                // Height: Flat on floor, but cable-like
+                float wireTh = 0.125f; // 2 pixels thick (Cable)
+                float wireW = 0.125f; // 2 pixels wide
+                double wireY = ry - 0.5 + (wireTh / 2.0); // Centered vertically based on thickness
+
+                // Center Dot/Square
+                // User said: "if single, can be a square"
+                
+                boolean isSingle = !cN && !cS && !cE && !cW;
+                
+                if (isSingle) {
+                    // Render single square (dot)
+                    renderBox(buf, pose, rx, wireY, rz, wireW, wireTh, wireW, rR, rG, rB, alpha);
+                } else {
+                    // Center
+                    renderBox(buf, pose, rx, wireY, rz, wireW, wireTh, wireW, rR, rG, rB, alpha);
+                    
+                    // Arms
+                    // Arm length: Center(0) to Edge(0.5).
+                    // Center box is +/- wireW/2 = 0.0625.
+                    // Arm Length = 0.5 - 0.0625 = 0.4375.
+                    // Arm Center = 0.0625 + (0.4375 / 2.0) = 0.28125.
+                    float armL = 0.4375f;
+                    float armOffset = 0.28125f;
+                    
+                    if (cN) renderBox(buf, pose, rx, wireY, rz - armOffset, wireW, wireTh, armL, rR, rG, rB, alpha);
+                    if (cS) renderBox(buf, pose, rx, wireY, rz + armOffset, wireW, wireTh, armL, rR, rG, rB, alpha);
+                    if (cE) renderBox(buf, pose, rx + armOffset, wireY, rz, armL, wireTh, wireW, rR, rG, rB, alpha);
+                    if (cW) renderBox(buf, pose, rx - armOffset, wireY, rz, armL, wireTh, wireW, rR, rG, rB, alpha);
+                }
+
+            } else if (renderType == 23) { // RENDER_IRON_BARS
+                // Connections: N(1), S(2), E(4), W(8)
+                boolean cN = (exposedFaces & 1) != 0;
+                boolean cS = (exposedFaces & 2) != 0;
+                boolean cE = (exposedFaces & 4) != 0;
+                boolean cW = (exposedFaces & 8) != 0;
+                
+                // Color: Usually Iron Grey (passed in or default)
+                float iR = (r * brightness) / 255.0f;
+                float iG = (g * brightness) / 255.0f;
+                float iB = (b * brightness) / 255.0f;
+                
+                // Center Post: 2x2 pixels -> 0.125f thickness
+                float postTh = 0.125f;
+                
+                renderBox(buf, pose, rx, ry, rz, postTh, 1.0f, postTh, iR, iG, iB, alpha);
+                
+                // Arms
+                // Length: Center(0) to Edge(0.5) - PostHalf(0.0625) = 0.4375
+                float armL = 0.4375f;
+                float armOffset = 0.5f - (armL / 2.0f); // Center of arm box
+                
+                if (cN) renderBox(buf, pose, rx, ry, rz - armOffset, postTh, 1.0f, armL, iR, iG, iB, alpha);
+                if (cS) renderBox(buf, pose, rx, ry, rz + armOffset, postTh, 1.0f, armL, iR, iG, iB, alpha);
+                if (cE) renderBox(buf, pose, rx + armOffset, ry, rz, armL, 1.0f, postTh, iR, iG, iB, alpha);
+                if (cW) renderBox(buf, pose, rx - armOffset, ry, rz, armL, 1.0f, postTh, iR, iG, iB, alpha);
+                
+            } else if (renderType == 24) { // RENDER_FENCE
+                // Connections: N(1), S(2), E(4), W(8)
+                boolean cN = (exposedFaces & 1) != 0;
+                boolean cS = (exposedFaces & 2) != 0;
+                boolean cE = (exposedFaces & 4) != 0;
+                boolean cW = (exposedFaces & 8) != 0;
+                
+                // Color: Wood (passed in)
+                float fR = (r * brightness) / 255.0f;
+                float fG = (g * brightness) / 255.0f;
+                float fB = (b * brightness) / 255.0f;
+                
+                // Post: 4x4 pixels -> 0.25f
+                float postTh = 0.25f;
+                
+                renderBox(buf, pose, rx, ry, rz, postTh, 1.0f, postTh, fR, fG, fB, alpha);
+                
+                // Rails
+                float railTh = 0.125f;
+                float railH = 0.1875f; // 3 pixels high
+                
+                double rY1 = ry + 0.25; // Upper rail center
+                double rY2 = ry - 0.15; // Lower rail center
+                
+                // Arm Length: Center(0) to Edge(0.5) - PostHalf(0.125) = 0.375
+                float armL = 0.375f;
+                float armOffset = 0.5f - (armL / 2.0f);
+                
+                if (cN) {
+                     renderBox(buf, pose, rx, rY1, rz - armOffset, railTh, railH, armL, fR, fG, fB, alpha);
+                     renderBox(buf, pose, rx, rY2, rz - armOffset, railTh, railH, armL, fR, fG, fB, alpha);
+                }
+                if (cS) {
+                     renderBox(buf, pose, rx, rY1, rz + armOffset, railTh, railH, armL, fR, fG, fB, alpha);
+                     renderBox(buf, pose, rx, rY2, rz + armOffset, railTh, railH, armL, fR, fG, fB, alpha);
+                }
+                if (cE) {
+                     renderBox(buf, pose, rx + armOffset, rY1, rz, armL, railH, railTh, fR, fG, fB, alpha);
+                     renderBox(buf, pose, rx + armOffset, rY2, rz, armL, railH, railTh, fR, fG, fB, alpha);
+                }
+                if (cW) {
+                     renderBox(buf, pose, rx - armOffset, rY1, rz, armL, railH, railTh, fR, fG, fB, alpha);
+                     renderBox(buf, pose, rx - armOffset, rY2, rz, armL, railH, railTh, fR, fG, fB, alpha);
+                }
+
+            } else if (renderType == 25) { // RENDER_STAIRS
+                // Unpack
+                int facing = exposedFaces & 3;
+                boolean isTop = (exposedFaces & 4) != 0;
+                int shape = (exposedFaces >> 3) & 7;
+                
+                float sR = (r * brightness) / 255.0f;
+                float sG = (g * brightness) / 255.0f;
+                float sB = (b * brightness) / 255.0f;
+                
+                // Base Slab (Always present)
+                double baseY = isTop ? ry + 0.25 : ry - 0.25;
+                renderBoxWithOutlines(buf, pose, rx, baseY, rz, 1.0f, 0.5f, 1.0f, sR, sG, sB, alpha);
+                
+                // Step Layer
+                double stepY = isTop ? ry - 0.25 : ry + 0.25;
+                
+                // Determine which quarters to render
+                // 0:NW, 1:NE, 2:SW, 3:SE
+                boolean[] q = new boolean[4];
+                
+                if (shape == 0) { // STRAIGHT
+                    if (facing == 2) { q[0]=true; q[1]=true; } // North -> High North (NW, NE)
+                    else if (facing == 0) { q[2]=true; q[3]=true; } // South -> High South (SW, SE)
+                    else if (facing == 3) { q[1]=true; q[3]=true; } // East -> High East (NE, SE)
+                    else if (facing == 1) { q[0]=true; q[2]=true; } // West -> High West (NW, SW)
+                } 
+                else if (shape == 1) { // INNER_LEFT
+                     if (facing == 2) { q[0]=true; q[1]=true; q[2]=true; } // North + West -> Missing SE
+                     else if (facing == 0) { q[1]=true; q[2]=true; q[3]=true; } // South + East -> Missing NW
+                     else if (facing == 3) { q[0]=true; q[1]=true; q[3]=true; } // East + North -> Missing SW
+                     else if (facing == 1) { q[0]=true; q[2]=true; q[3]=true; } // West + South -> Missing NE
+                }
+                else if (shape == 2) { // INNER_RIGHT
+                     if (facing == 2) { q[0]=true; q[1]=true; q[3]=true; } // North + East -> Missing SW
+                     else if (facing == 0) { q[0]=true; q[2]=true; q[3]=true; } // South + West -> Missing NE
+                     else if (facing == 3) { q[1]=true; q[2]=true; q[3]=true; } // East + South -> Missing NW
+                     else if (facing == 1) { q[0]=true; q[1]=true; q[2]=true; } // West + North -> Missing SE
+                }
+                else if (shape == 3) { // OUTER_LEFT
+                     if (facing == 2) { q[0]=true; } // North + West -> NW
+                     else if (facing == 0) { q[3]=true; } // South + East -> SE
+                     else if (facing == 3) { q[1]=true; } // East + North -> NE
+                     else if (facing == 1) { q[2]=true; } // West + South -> SW
+                }
+                else if (shape == 4) { // OUTER_RIGHT
+                     if (facing == 2) { q[1]=true; } // North + East -> NE
+                     else if (facing == 0) { q[2]=true; } // South + West -> SW
+                     else if (facing == 3) { q[3]=true; } // East + South -> SE
+                     else if (facing == 1) { q[0]=true; } // West + North -> NW
+                }
+
+                // Render Quarters with Merging to avoid internal borders
+                boolean[] rendered = new boolean[4];
+                
+                // 1. Try Horizontal Merges (North/South)
+                // North (NW + NE) -> q[0] & q[1]
+                if (q[0] && q[1]) {
+                    renderBoxWithOutlines(buf, pose, rx, stepY, rz - 0.25, 1.0f, 0.5f, 0.5f, sR, sG, sB, alpha);
+                    rendered[0] = true;
+                    rendered[1] = true;
+                }
+                
+                // South (SW + SE) -> q[2] & q[3]
+                if (q[2] && q[3]) {
+                    renderBoxWithOutlines(buf, pose, rx, stepY, rz + 0.25, 1.0f, 0.5f, 0.5f, sR, sG, sB, alpha);
+                    rendered[2] = true;
+                    rendered[3] = true;
+                }
+                
+                // 2. Try Vertical Merges (West/East) on remaining
+                // West (NW + SW) -> q[0] & q[2]
+                if (!rendered[0] && !rendered[2] && q[0] && q[2]) {
+                    renderBoxWithOutlines(buf, pose, rx - 0.25, stepY, rz, 0.5f, 0.5f, 1.0f, sR, sG, sB, alpha);
+                    rendered[0] = true;
+                    rendered[2] = true;
+                }
+                
+                // East (NE + SE) -> q[1] & q[3]
+                if (!rendered[1] && !rendered[3] && q[1] && q[3]) {
+                    renderBoxWithOutlines(buf, pose, rx + 0.25, stepY, rz, 0.5f, 0.5f, 1.0f, sR, sG, sB, alpha);
+                    rendered[1] = true;
+                    rendered[3] = true;
+                }
+                
+                // 3. Render Remaining Single Quarters
+                float qSize = 0.5f;
+                if (q[0] && !rendered[0]) renderBoxWithOutlines(buf, pose, rx - 0.25, stepY, rz - 0.25, qSize, 0.5f, qSize, sR, sG, sB, alpha);
+                if (q[1] && !rendered[1]) renderBoxWithOutlines(buf, pose, rx + 0.25, stepY, rz - 0.25, qSize, 0.5f, qSize, sR, sG, sB, alpha);
+                if (q[2] && !rendered[2]) renderBoxWithOutlines(buf, pose, rx - 0.25, stepY, rz + 0.25, qSize, 0.5f, qSize, sR, sG, sB, alpha);
+                if (q[3] && !rendered[3]) renderBoxWithOutlines(buf, pose, rx + 0.25, stepY, rz + 0.25, qSize, 0.5f, qSize, sR, sG, sB, alpha);
+
+            } else if (renderType == 26) { // RENDER_SLAB
+                 int type = exposedFaces & 3;
+                 
+                 float sR = (r * brightness) / 255.0f;
+                 float sG = (g * brightness) / 255.0f;
+                 float sB = (b * brightness) / 255.0f;
+                 
+                 if (type == 2) { // Double
+                     renderBoxWithOutlines(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, sR, sG, sB, alpha);
+                 } else if (type == 1) { // Top
+                     renderBoxWithOutlines(buf, pose, rx, ry + 0.25, rz, 1.0f, 0.5f, 1.0f, sR, sG, sB, alpha);
+                 } else { // Bottom
+                     renderBoxWithOutlines(buf, pose, rx, ry - 0.25, rz, 1.0f, 0.5f, 1.0f, sR, sG, sB, alpha);
+                 }
+            } else if (renderType == 27) { // RENDER_TRAPDOOR
+                 // Unpack
+                 int facing = exposedFaces & 3;
+                 boolean isTop = (exposedFaces & 4) != 0;
+                 boolean isOpen = (exposedFaces & 8) != 0;
+                 
+                 float tR = (r * brightness) / 255.0f;
+                 float tG = (g * brightness) / 255.0f;
+                 float tB = (b * brightness) / 255.0f;
+                 
+                 float th = 0.1875f; // 3 pixels thickness
+                 
+                 if (isOpen) {
+                     // Attached to the face specified by Facing
+                     // Facing: S(0), W(1), N(2), E(3)
+                     
+                     if (facing == 2) { // North (Attached to Z-)
+                         // Position: Z = rz - 0.5 + th/2
+                         renderBox(buf, pose, rx, ry, rz - 0.5 + (th/2.0), 1.0f, 1.0f, th, tR, tG, tB, alpha);
+                     } else if (facing == 0) { // South (Attached to Z+)
+                         renderBox(buf, pose, rx, ry, rz + 0.5 - (th/2.0), 1.0f, 1.0f, th, tR, tG, tB, alpha);
+                     } else if (facing == 1) { // West (Attached to X-)
+                         renderBox(buf, pose, rx - 0.5 + (th/2.0), ry, rz, th, 1.0f, 1.0f, tR, tG, tB, alpha);
+                     } else if (facing == 3) { // East (Attached to X+)
+                         renderBox(buf, pose, rx + 0.5 - (th/2.0), ry, rz, th, 1.0f, 1.0f, tR, tG, tB, alpha);
+                     }
+                 } else {
+                     // Closed (Horizontal)
+                     // If Top: Top of block. If Bottom: Bottom of block.
+                     
+                     if (isTop) {
+                         // Top part of block space
+                         // Center Y = ry + 0.5 - th/2
+                         renderBox(buf, pose, rx, ry + 0.5 - (th/2.0), rz, 1.0f, th, 1.0f, tR, tG, tB, alpha);
+                     } else {
+                        // Bottom part
+                        // Center Y = ry - 0.5 + th/2
+                        renderBox(buf, pose, rx, ry - 0.5 + (th/2.0), rz, 1.0f, th, 1.0f, tR, tG, tB, alpha);
+                    }
+                }
+            } else if (renderType == 28) { // RENDER_GLASS_PANE
+                // Connections: N(1), S(2), E(4), W(8)
+                boolean cN = (exposedFaces & 1) != 0;
+                boolean cS = (exposedFaces & 2) != 0;
+                boolean cE = (exposedFaces & 4) != 0;
+                boolean cW = (exposedFaces & 8) != 0;
+                
+                float gR = (r * brightness) / 255.0f;
+                float gG = (g * brightness) / 255.0f;
+                float gB = (b * brightness) / 255.0f;
+                float glassAlpha = 0.4f;
+                
+                // Post: 2x2 pixels -> 0.125f thickness
+                float postTh = 0.125f;
+                
+                renderBox(buf, pose, rx, ry, rz, postTh, 1.0f, postTh, gR, gG, gB, glassAlpha);
+                
+                // Arms
+                float armL = 0.4375f;
+                float armOffset = 0.5f - (armL / 2.0f);
+                
+                if (cN) renderBox(buf, pose, rx, ry, rz - armOffset, postTh, 1.0f, armL, gR, gG, gB, glassAlpha);
+                if (cS) renderBox(buf, pose, rx, ry, rz + armOffset, postTh, 1.0f, armL, gR, gG, gB, glassAlpha);
+                if (cE) renderBox(buf, pose, rx + armOffset, ry, rz, armL, 1.0f, postTh, gR, gG, gB, glassAlpha);
+                if (cW) renderBox(buf, pose, rx - armOffset, ry, rz, armL, 1.0f, postTh, gR, gG, gB, glassAlpha);
+
+            } else if (renderType == 29) { // RENDER_GLASS_BLOCK
+                float glassAlpha = 0.4f;
+                renderBlockWithBorders(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, glassAlpha, exposedFaces);
+            } else {
+                // Render block as a box (1.0 size for solid terrain)
                 renderBlockWithBorders(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha, exposedFaces);
             }
         }
@@ -860,6 +1635,42 @@ public class VoxelMapRenderer {
             buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
             buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
         }
+    }
+
+    private static void renderBoxWithOutlines(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float r, float g, float b, float a) {
+        // Render Main Box
+        renderBox(buf, pose, x, y, z, w, h, d, r, g, b, a);
+        
+        // Render Outlines
+        float or = 0.0f; 
+        float og = 0.0f; 
+        float ob = 0.0f;
+        float oa = 1.0f;
+        
+        float th = 0.02f; // Thickness of outline
+        
+        float minX = (float)(x - w/2);
+        float maxX = (float)(x + w/2);
+        float minZ = (float)(z - d/2);
+        float maxZ = (float)(z + d/2);
+        
+        // Vertical Edges (4)
+        renderBox(buf, pose, minX, y, minZ, th, h, th, or, og, ob, oa); // NW
+        renderBox(buf, pose, maxX, y, minZ, th, h, th, or, og, ob, oa); // NE
+        renderBox(buf, pose, maxX, y, maxZ, th, h, th, or, og, ob, oa); // SE
+        renderBox(buf, pose, minX, y, maxZ, th, h, th, or, og, ob, oa); // SW
+        
+        // Top Edges (4)
+        renderBox(buf, pose, x, y + h, minZ, w, th, th, or, og, ob, oa); // N
+        renderBox(buf, pose, x, y + h, maxZ, w, th, th, or, og, ob, oa); // S
+        renderBox(buf, pose, minX, y + h, z, th, th, d, or, og, ob, oa); // W
+        renderBox(buf, pose, maxX, y + h, z, th, th, d, or, og, ob, oa); // E
+        
+        // Bottom Edges (4)
+        renderBox(buf, pose, x, y, minZ, w, th, th, or, og, ob, oa); // N
+        renderBox(buf, pose, x, y, maxZ, w, th, th, or, og, ob, oa); // S
+        renderBox(buf, pose, minX, y, z, th, th, d, or, og, ob, oa); // W
+        renderBox(buf, pose, maxX, y, z, th, th, d, or, og, ob, oa); // E
     }
 
     public static void renderBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float r, float g, float b, float a) {
