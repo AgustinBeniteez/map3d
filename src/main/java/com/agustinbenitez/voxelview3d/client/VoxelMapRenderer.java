@@ -855,6 +855,11 @@ public class VoxelMapRenderer {
                     innerR = r / 255.0f;
                     innerG = g / 255.0f;
                     innerB = b / 255.0f;
+                } else {
+                    // Unlit: Darker center to show border
+                    innerR = 0.15f * brightness;
+                    innerG = 0.08f * brightness;
+                    innerB = 0.08f * brightness;
                 }
                 
                 // Render Frame (Base Block)
@@ -863,25 +868,20 @@ public class VoxelMapRenderer {
                 float frameG = 0.17f * brightness;
                 float frameB = 0.17f * brightness;
                 
-                // If unlit, the whole block is just this brown frame (maybe slightly lighter center?)
-                // User said: "if lit, change from brown to light yellow with brown border"
-                // So unlit is just brown.
-                
                 renderBox(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, frameR, frameG, frameB, alpha);
                 
-                if (isLit) {
-                    // Render 3 intersecting boxes to create "panels" on the faces with a border
-                    // Border width = (1.0 - 0.7) / 2 = 0.15 (approx 2.4 pixels)
-                    float panelW = 0.75f; // Slightly larger panels
-                    float thickness = 1.002f; // Slightly sticking out
-                    
-                    // Box 1: Sticks out X faces
-                    renderBox(buf, pose, rx, ry, rz, thickness, panelW, panelW, innerR, innerG, innerB, alpha);
-                    // Box 2: Sticks out Y faces
-                    renderBox(buf, pose, rx, ry, rz, panelW, thickness, panelW, innerR, innerG, innerB, alpha);
-                    // Box 3: Sticks out Z faces
-                    renderBox(buf, pose, rx, ry, rz, panelW, panelW, thickness, innerR, innerG, innerB, alpha);
-                }
+                // Render Panels (Lit or Unlit)
+                // Render 3 intersecting boxes to create "panels" on the faces with a border
+                // Border width = (1.0 - 0.7) / 2 = 0.15 (approx 2.4 pixels)
+                float panelW = 0.75f; // Slightly larger panels
+                float thickness = 1.002f; // Slightly sticking out
+                
+                // Box 1: Sticks out X faces
+                renderBox(buf, pose, rx, ry, rz, thickness, panelW, panelW, innerR, innerG, innerB, alpha);
+                // Box 2: Sticks out Y faces
+                renderBox(buf, pose, rx, ry, rz, panelW, thickness, panelW, innerR, innerG, innerB, alpha);
+                // Box 3: Sticks out Z faces
+                renderBox(buf, pose, rx, ry, rz, panelW, panelW, thickness, innerR, innerG, innerB, alpha);
                 
             } else if (renderType == 19) { // RENDER_DOOR
                 // Door Rendering

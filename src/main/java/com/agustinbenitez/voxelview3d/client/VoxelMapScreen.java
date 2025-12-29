@@ -62,6 +62,7 @@ public class VoxelMapScreen extends Screen {
     private Button togglePlayers;
     private Button toggleNightMode;
     private Button toggleChunkGrid;
+    private Button togglePerspective;
     private Button waypointsBtn;
     private Button closeModalBtn;
     
@@ -148,6 +149,14 @@ public class VoxelMapScreen extends Screen {
             new ResourceLocation("voxelview3d", "textures/chunkshide.png"),
             () -> ClientSettings.showChunkGrid,
             b -> ClientSettings.showChunkGrid = !ClientSettings.showChunkGrid));
+        x += btnWidth + 5;
+
+        // Perspective Toggle
+        togglePerspective = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
+            new ResourceLocation("voxelview3d", "textures/side.png"),
+            new ResourceLocation("voxelview3d", "textures/up.png"),
+            () -> !ClientSettings.isTopDownView,
+            b -> ClientSettings.isTopDownView = !ClientSettings.isTopDownView));
         x += btnWidth + 5;
         
         // Waypoints Button
@@ -418,6 +427,7 @@ public class VoxelMapScreen extends Screen {
         if (togglePlayers != null) togglePlayers.visible = showBottom;
         if (toggleNightMode != null) toggleNightMode.visible = showBottom;
         if (toggleChunkGrid != null) toggleChunkGrid.visible = showBottom;
+        if (togglePerspective != null) togglePerspective.visible = showBottom;
         if (waypointsBtn != null) waypointsBtn.visible = showBottom;
     }
     
@@ -631,7 +641,8 @@ public class VoxelMapScreen extends Screen {
         
         // Use shared renderer
         if (!showWaypointModal && !showSettingsModal) {
-            VoxelMapRenderer.renderMap(poseStack, zoom, cameraPitch, cameraYaw, false, ClientSettings.renderDistance);
+            float pitch = ClientSettings.isTopDownView ? 90.0f : cameraPitch;
+            VoxelMapRenderer.renderMap(poseStack, zoom, pitch, cameraYaw, false, ClientSettings.renderDistance);
         }
         
         // Clear depth buffer to ensure UI draws cleanly on top of the 3D map

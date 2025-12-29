@@ -17,6 +17,7 @@ public class ClientSettings {
     public static boolean fullBrightMap = false;
     public static boolean showChunkGrid = false;
     public static boolean isNightMode = false;
+    public static boolean isTopDownView = false;
 
     public static final List<Waypoint> waypoints = new ArrayList<>();
 
