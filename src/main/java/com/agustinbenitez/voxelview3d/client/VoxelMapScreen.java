@@ -2,21 +2,26 @@ package com.agustinbenitez.voxelview3d.client;
 
 import com.agustinbenitez.voxelview3d.world.ChunkScanner;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.*;
+import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.biome.Biome;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 public class VoxelMapScreen extends Screen {
     
@@ -39,6 +44,7 @@ public class VoxelMapScreen extends Screen {
     private EditBox wpX, wpY, wpZ;
     private Button createWaypointBtn;
     private Button openCreateModeBtn; // Button in List mode to open Create mode
+    private Button deleteAllBtn;
     // private Button cancelCreateBtn; // Removed, merged into X button
     
     private int selectedColor = 0xFFFF00; // Default Yellow
@@ -70,32 +76,36 @@ public class VoxelMapScreen extends Screen {
         super.init();
         
         int buttonY = this.height - 25;
-        int btnWidth = 50;
+        int btnWidth = 20; // Icons are small
         int x = 10;
         
         // Toggle Buttons
-        toggleVillagers = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.toggle.villagers").append(Component.translatable(ClientSettings.showVillagers ? "voxelview3d.on" : "voxelview3d.off")), b -> {
-            ClientSettings.showVillagers = !ClientSettings.showVillagers;
-            b.setMessage(Component.translatable("voxelview3d.toggle.villagers").append(Component.translatable(ClientSettings.showVillagers ? "voxelview3d.on" : "voxelview3d.off")));
-        }).bounds(x, buttonY, btnWidth, 20).build());
+        toggleVillagers = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
+            new ResourceLocation("voxelview3d", "textures/types/villager.png"),
+            new ResourceLocation("voxelview3d", "textures/types/villager_hide.png"),
+            () -> ClientSettings.showVillagers,
+            b -> ClientSettings.showVillagers = !ClientSettings.showVillagers));
         x += btnWidth + 5;
         
-        toggleAnimals = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.toggle.animals").append(Component.translatable(ClientSettings.showAnimals ? "voxelview3d.on" : "voxelview3d.off")), b -> {
-            ClientSettings.showAnimals = !ClientSettings.showAnimals;
-            b.setMessage(Component.translatable("voxelview3d.toggle.animals").append(Component.translatable(ClientSettings.showAnimals ? "voxelview3d.on" : "voxelview3d.off")));
-        }).bounds(x, buttonY, btnWidth, 20).build());
+        toggleAnimals = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
+            new ResourceLocation("voxelview3d", "textures/types/animal.png"),
+            new ResourceLocation("voxelview3d", "textures/types/animal_hide.png"),
+            () -> ClientSettings.showAnimals,
+            b -> ClientSettings.showAnimals = !ClientSettings.showAnimals));
         x += btnWidth + 5;
         
-        toggleEnemies = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.toggle.enemies").append(Component.translatable(ClientSettings.showEnemies ? "voxelview3d.on" : "voxelview3d.off")), b -> {
-            ClientSettings.showEnemies = !ClientSettings.showEnemies;
-            b.setMessage(Component.translatable("voxelview3d.toggle.enemies").append(Component.translatable(ClientSettings.showEnemies ? "voxelview3d.on" : "voxelview3d.off")));
-        }).bounds(x, buttonY, btnWidth, 20).build());
+        toggleEnemies = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
+            new ResourceLocation("voxelview3d", "textures/types/enemie.png"),
+            new ResourceLocation("voxelview3d", "textures/types/enemie_hide.png"),
+            () -> ClientSettings.showEnemies,
+            b -> ClientSettings.showEnemies = !ClientSettings.showEnemies));
         x += btnWidth + 5;
         
-        togglePlayers = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.toggle.players").append(Component.translatable(ClientSettings.showPlayers ? "voxelview3d.on" : "voxelview3d.off")), b -> {
-            ClientSettings.showPlayers = !ClientSettings.showPlayers;
-            b.setMessage(Component.translatable("voxelview3d.toggle.players").append(Component.translatable(ClientSettings.showPlayers ? "voxelview3d.on" : "voxelview3d.off")));
-        }).bounds(x, buttonY, btnWidth, 20).build());
+        togglePlayers = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
+            new ResourceLocation("voxelview3d", "textures/types/player.png"),
+            new ResourceLocation("voxelview3d", "textures/types/player_hide.png"),
+            () -> ClientSettings.showPlayers,
+            b -> ClientSettings.showPlayers = !ClientSettings.showPlayers));
         x += btnWidth + 5;
         
         // Waypoints Button
@@ -198,7 +208,13 @@ public class VoxelMapScreen extends Screen {
             waypointNameField.setValue("");
             selectedIcon = "icon1"; 
             updateModalVisibility();
-        }).bounds(centerX - 100, modalY + modalH - 40, 200, 20).build());
+        }).bounds(centerX - 105, modalY + modalH - 40, 100, 20).build());
+        
+        // Delete All Button
+        deleteAllBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.waypoint.delete_all"), b -> {
+            ClientSettings.waypoints.clear();
+            WaypointManager.saveWaypoints();
+        }).bounds(centerX + 5, modalY + modalH - 40, 100, 20).build());
         
         // Close Button (Small X in top right of the whole modal)
         closeModalBtn = addRenderableWidget(Button.builder(Component.literal("X"), b -> {
@@ -275,6 +291,7 @@ public class VoxelMapScreen extends Screen {
         // List Mode Widgets
         boolean showList = showWaypointModal && !isCreatingMode;
         if (openCreateModeBtn != null) openCreateModeBtn.visible = showList;
+        if (deleteAllBtn != null) deleteAllBtn.visible = showList;
         
         // Settings Modal Widgets
         boolean showSettings = showSettingsModal;
@@ -522,6 +539,9 @@ public class VoxelMapScreen extends Screen {
         if (!showWaypointModal && !showSettingsModal) {
             Component zoomText = Component.translatable("voxelview3d.zoom", String.format("%.1f", zoom));
             guiGraphics.drawString(this.font, zoomText, this.width - 80, menuY + 10, 0xFFFFFFFF);
+            
+            // Draw Compass
+            renderCompass(guiGraphics);
         }
 
         Minecraft mc = Minecraft.getInstance();
@@ -585,6 +605,78 @@ public class VoxelMapScreen extends Screen {
         poseStack.popPose();
     }
     
+    private void renderCompass(GuiGraphics guiGraphics) {
+        // Compass configuration
+        int cx = this.width - 40;
+        int cy = 40;
+        float radius = 20.0f;
+        
+        PoseStack poseStack = guiGraphics.pose();
+        poseStack.pushPose();
+        poseStack.translate(cx, cy, 0);
+        
+        // Scale and Rotate (Flip Y for screen coords)
+        poseStack.scale(radius, -radius, radius); 
+        poseStack.mulPose(Axis.XP.rotationDegrees(cameraPitch));
+        poseStack.mulPose(Axis.YP.rotationDegrees(cameraYaw));
+        
+        // Draw Axis Lines
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        Tesselator tess = Tesselator.getInstance();
+        BufferBuilder buf = tess.getBuilder();
+        RenderSystem.disableDepthTest(); // Draw on top
+        RenderSystem.lineWidth(4.0f); // Make lines thicker
+        
+        buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+        Matrix4f pose = poseStack.last().pose();
+        
+        // Axis Lines (Length 1.5 for visibility)
+        float len = 1.5f;
+        // N (-Z) - Red
+        buf.vertex(pose, 0, 0, 0).color(255, 100, 100, 255).endVertex();
+        buf.vertex(pose, 0, 0, -len).color(255, 0, 0, 255).endVertex();
+        // S (+Z) - Dark Red
+        buf.vertex(pose, 0, 0, 0).color(200, 200, 200, 255).endVertex();
+        buf.vertex(pose, 0, 0, len).color(150, 50, 50, 255).endVertex();
+        // E (+X) - Blue
+        buf.vertex(pose, 0, 0, 0).color(100, 100, 255, 255).endVertex();
+        buf.vertex(pose, len, 0, 0).color(0, 0, 255, 255).endVertex();
+        // W (-X) - Dark Blue
+        buf.vertex(pose, 0, 0, 0).color(200, 200, 200, 255).endVertex();
+        buf.vertex(pose, -len, 0, 0).color(50, 50, 150, 255).endVertex();
+
+        BufferUploader.drawWithShader(buf.end());
+        RenderSystem.lineWidth(1.0f); // Reset line width
+        
+        poseStack.popPose();
+        
+        // Draw labels N, S, E, W
+        // N (-Z), S (+Z), E (+X), W (-X)
+        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 0, 0, -1, "N", 0xFFFF0000);
+        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 0, 0, 1, "S", 0xFFAAAAAA);
+        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 1, 0, 0, "E", 0xFF0000FF);
+        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, -1, 0, 0, "W", 0xFFAAAAAA);
+    }
+
+    private void drawCompassLabel(GuiGraphics guiGraphics, int cx, int cy, float radius, float x, float y, float z, String text, int color) {
+        Vector3f v = new Vector3f(x, y, z);
+        
+        // Apply rotations in order: Yaw then Pitch
+        v.rotateY((float)Math.toRadians(cameraYaw));
+        v.rotateX((float)Math.toRadians(cameraPitch));
+        
+        // Project to screen
+        // Screen X = v.x
+        // Screen Y = -v.y (Up in 3D is Down in 2D screen coords)
+        
+        int sx = cx + (int)(v.x * radius);
+        int sy = cy + (int)(-v.y * radius);
+        
+        // Center text
+        int w = this.font.width(text);
+        guiGraphics.drawString(this.font, text, sx - w / 2, sy - 4, color, false);
+    }
+
     private void renderModalOverlays(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         // Draw colors over buttons
         for (int i = 0; i < colorButtons.size(); i++) {
@@ -855,5 +947,37 @@ public class VoxelMapScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    private static class ImageToggleButton extends Button {
+        private final ResourceLocation textureOn;
+        private final ResourceLocation textureOff;
+        private final Supplier<Boolean> stateSupplier;
+
+        public ImageToggleButton(int x, int y, int width, int height, ResourceLocation textureOn, ResourceLocation textureOff, Supplier<Boolean> stateSupplier, OnPress onPress) {
+            super(x, y, width, height, Component.empty(), onPress, DEFAULT_NARRATION);
+            this.textureOn = textureOn;
+            this.textureOff = textureOff;
+            this.stateSupplier = stateSupplier;
+        }
+
+        @Override
+        public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            boolean isOn = stateSupplier.get();
+            ResourceLocation texture = isOn ? textureOn : textureOff;
+            
+            RenderSystem.setShaderTexture(0, texture);
+            RenderSystem.enableBlend();
+            
+            // Draw background if hovered
+            if (this.isHovered) {
+                 guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x40FFFFFF);
+            }
+            
+            // Draw icon centered
+            int iconSize = width - 4;
+            guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
+            RenderSystem.disableBlend();
+        }
     }
 }

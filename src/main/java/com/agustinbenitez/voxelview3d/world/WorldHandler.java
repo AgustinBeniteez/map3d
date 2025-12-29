@@ -20,10 +20,39 @@ import com.agustinbenitez.voxelview3d.VoxelView3D;
 public class WorldHandler {
     private static int tickCounter = 40; // Start immediately
     private static final Queue<ChunkPos> scanQueue = new LinkedList<>();
+    
+    private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> lastDimension;
+    private static ChunkPos lastPos;
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END && Minecraft.getInstance().level != null) {
+        Minecraft mc = Minecraft.getInstance();
+        if (event.phase == TickEvent.Phase.END && mc.level != null && mc.player != null) {
+            
+            // Check for dimension change or large movement to force refresh
+            var currentDimension = mc.level.dimension();
+            ChunkPos currentPos = mc.player.chunkPosition();
+            
+            boolean dimensionChanged = lastDimension != null && !lastDimension.equals(currentDimension);
+            // If moved more than 2 chunks, refresh immediately (responsive)
+            boolean movedSignificantly = lastPos != null && (Math.abs(currentPos.x - lastPos.x) > 2 || Math.abs(currentPos.z - lastPos.z) > 2);
+            
+            if (dimensionChanged) {
+                ChunkScanner.clear();
+                scanQueue.clear();
+                tickCounter = 20; // Force refresh immediately
+            } else if (movedSignificantly) {
+                 tickCounter = 20; // Force refresh immediately
+                 // If moved VERY far (teleport), clear cache to avoid artifacts/memory usage
+                 if (Math.abs(currentPos.x - lastPos.x) > 10 || Math.abs(currentPos.z - lastPos.z) > 10) {
+                     ChunkScanner.clear();
+                     scanQueue.clear();
+                 }
+            }
+            
+            lastDimension = currentDimension;
+            lastPos = currentPos;
+            
             tickCounter++;
             
             // Periodically refresh the scan queue (every 1 second = 20 ticks)

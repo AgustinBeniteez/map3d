@@ -18,6 +18,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.joml.Matrix4f;
 
+import java.util.HashMap;
 import java.util.Map;
 
 public class VoxelMapRenderer {
@@ -44,9 +45,6 @@ public class VoxelMapRenderer {
         poseStack.scale(zoom, -zoom, zoom);
         poseStack.mulPose(Axis.XP.rotationDegrees(cameraPitch));
         poseStack.mulPose(Axis.YP.rotationDegrees(cameraYaw));
-        
-        // Draw Axis Marker (Center)
-        drawAxis(poseStack);
         
         // Render Player Marker (Textured Cube)
         renderPlayerMarker(poseStack, player);
@@ -125,6 +123,9 @@ public class VoxelMapRenderer {
         double centerZ = player.getZ();
         double centerY = player.getY();
         
+        // Track waypoint counts at each location to stack them
+        Map<String, Integer> waypointCounts = new HashMap<>();
+        
         for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
             if (!wp.visible) continue;
             
@@ -142,14 +143,20 @@ public class VoxelMapRenderer {
                 if (alpha < 0.1f) alpha = 0.05f; // almost invisible
             }
             
+            // Calculate stacking offset
+            String locKey = wp.x + "_" + wp.y + "_" + wp.z;
+            int stackIndex = waypointCounts.getOrDefault(locKey, 0);
+            waypointCounts.put(locKey, stackIndex + 1);
+            
             // Draw Name Tag & Icon
             // Position name tag slightly above the waypoint's actual Y coordinate
-            // Let's keep it at the waypoint's Y coordinate so you know its altitude
+            // Stack overlapping waypoints vertically (4.0 blocks per index)
             double ry = wp.y - centerY; 
+            double stackOffset = stackIndex * 4.0; 
             
             if (alpha > 0.2f) { // Only show name if somewhat visible (not right on top of player)
                 poseStack.pushPose();
-                poseStack.translate(rx, ry + 2.5, rz);
+                poseStack.translate(rx, ry + 2.5 + stackOffset, rz);
                 // Billboard effect
                 poseStack.mulPose(Axis.YP.rotationDegrees(-cameraYaw));
                 poseStack.mulPose(Axis.XP.rotationDegrees(-cameraPitch));
@@ -201,27 +208,6 @@ public class VoxelMapRenderer {
             }
         }
     }
-
-    private static void drawAxis(PoseStack poseStack) {
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        
-        buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
-        Matrix4f pose = poseStack.last().pose();
-        
-        // X Axis (Red)
-        buf.vertex(pose, 0, 0, 0).color(255, 0, 0, 255).endVertex();
-        buf.vertex(pose, 5, 0, 0).color(255, 0, 0, 255).endVertex();
-        // Y Axis (Green)
-        buf.vertex(pose, 0, 0, 0).color(0, 255, 0, 255).endVertex();
-        buf.vertex(pose, 0, 5, 0).color(0, 255, 0, 255).endVertex();
-        // Z Axis (Blue)
-        buf.vertex(pose, 0, 0, 0).color(0, 0, 255, 255).endVertex();
-        buf.vertex(pose, 0, 0, 5).color(0, 0, 255, 255).endVertex();
-        
-        BufferUploader.drawWithShader(buf.end());
-    }
     
     private static void renderPlayerMarker(PoseStack poseStack, Player player) {
         if (!(player instanceof AbstractClientPlayer)) return;
@@ -233,15 +219,26 @@ public class VoxelMapRenderer {
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
         
         poseStack.pushPose();
-        poseStack.mulPose(Axis.YP.rotationDegrees(180));
+        // Rotate to match player facing
+        // Model faces North (-Z). Minecraft Yaw: S=0, W=90, N=180, E=270.
+        // We need to rotate by (180 - playerYaw) to align model with player direction.
+        poseStack.mulPose(Axis.YP.rotationDegrees(180 - player.getYRot()));
         
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
+        
+        float headSize = 2.0f; // Increased size (was 1.0f)
+        float borderSize = 2.3f; // Slightly larger for border
+        
+        // 1. Render Textured Head
         buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+        renderTexturedHead(buf, poseStack.last().pose(), 0, 0, 0, headSize);
+        BufferUploader.drawWithShader(buf.end());
         
-        // Render at 0,0,0 (Center of map) with size 1.0
-        renderTexturedHead(buf, poseStack.last().pose(), 0, 0, 0, 1.0f);
-        
+        // 2. Render White Border (Inverted Hull)
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, borderSize, 1.0f, 1.0f, 1.0f, 1.0f);
         BufferUploader.drawWithShader(buf.end());
         
         poseStack.popPose();
@@ -420,20 +417,37 @@ public class VoxelMapRenderer {
     
     private static void renderPlayerHead(PoseStack poseStack, AbstractClientPlayer player, double cx, double cz, double cy) {
         ResourceLocation skin = player.getSkinTextureLocation();
-        RenderSystem.setShaderTexture(0, skin);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
         
         double rx = player.getX() - cx;
         double ry = player.getY() - cy;
         double rz = player.getZ() - cz;
         
-        renderTexturedHead(buf, poseStack.last().pose(), rx, ry + 1.4, rz, 0.5f);
+        poseStack.pushPose();
+        poseStack.translate(rx, ry, rz);
+        // Rotate to match player facing
+        poseStack.mulPose(Axis.YP.rotationDegrees(180 - player.getYRot()));
         
+        Tesselator tess = Tesselator.getInstance();
+        BufferBuilder buf = tess.getBuilder();
+        
+        float headSize = 2.0f;
+        float borderSize = 2.3f;
+        
+        // 1. Render Textured Head
+        RenderSystem.setShaderTexture(0, skin);
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+        // Render at 0,0,0 local to the translated position
+        renderTexturedHead(buf, poseStack.last().pose(), 0, 0, 0, headSize);
         BufferUploader.drawWithShader(buf.end());
+        
+        // 2. Render White Border (Inverted Hull)
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, borderSize, 1.0f, 1.0f, 1.0f, 1.0f);
+        BufferUploader.drawWithShader(buf.end());
+        
+        poseStack.popPose();
     }
 
     public static void renderBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float r, float g, float b, float a) {
@@ -545,5 +559,52 @@ public class VoxelMapRenderer {
         buf.vertex(pose, maxX, minY, maxZ).uv(uMin, vMax).endVertex();
         buf.vertex(pose, maxX, minY, minZ).uv(uMax, vMax).endVertex();
         buf.vertex(pose, maxX, maxY, minZ).uv(uMax, vMin).endVertex();
+    }
+
+    private static void renderInvertedColorBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float size, float red, float green, float blue, float alpha) {
+        float minX = (float)(x - size/2);
+        float maxX = (float)(x + size/2);
+        float minY = (float)y;
+        float maxY = (float)(y + size);
+        float minZ = (float)(z - size/2);
+        float maxZ = (float)(z + size/2);
+        
+        // Reverse winding order (3, 2, 1, 0) for inverted hull effect
+        
+        // Top
+        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        
+        // Bottom
+        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        
+        // Front
+        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        
+        // Back
+        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        
+        // Left
+        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        
+        // Right
+        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
     }
 }
