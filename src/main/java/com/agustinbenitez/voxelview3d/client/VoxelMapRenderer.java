@@ -14,6 +14,7 @@ import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.Squid;
 import net.minecraft.world.entity.GlowSquid;
 import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
@@ -27,6 +28,9 @@ import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.decoration.Painting;
 import net.minecraft.world.entity.decoration.PaintingVariant;
 import net.minecraft.core.Direction;
+import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.MultiBufferSource;
 
 public class VoxelMapRenderer {
 
@@ -1414,109 +1418,63 @@ public class VoxelMapRenderer {
         Map<ChunkPos, ChunkScanner.ScannedChunk> scannedData = ChunkScanner.getData();
         ChunkPos playerChunk = player.chunkPosition();
         
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
-        
-        // Pass 1: Boxes
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
         
         for (Entity e : entities) {
-            if (e instanceof Player) continue;
+            if (e == player) continue; 
             
-            // Vertical Culling for Entities
+            // Vertical Culling
             if (e.getY() < minY || e.getY() > maxY) continue;
             
-            // Horizontal Culling (Radius & Scanned Check)
+            // Horizontal Culling
             ChunkPos entityChunk = new ChunkPos(e.blockPosition());
-            
-            // Check if chunk is scanned (only render entities on visible map chunks)
             if (!scannedData.containsKey(entityChunk)) continue;
             
-            // Check radius
             if (radius > 0) {
                  int dx = Math.abs(entityChunk.x - playerChunk.x);
                  int dz = Math.abs(entityChunk.z - playerChunk.z);
                  if (dx > radius || dz > radius) continue;
             }
             
+            // Check visibility settings
+            boolean visible = false;
+            
+            if (e instanceof Enemy) {
+                if (ClientSettings.showEnemies) visible = true;
+            } else if (e instanceof Villager) {
+                if (ClientSettings.showVillagers) visible = true;
+            } else if (e instanceof Animal || e instanceof Squid || e instanceof GlowSquid) {
+                if (ClientSettings.showAnimals) visible = true;
+            } else if (e instanceof Player) {
+                if (ClientSettings.showPlayers) visible = true;
+            }
+            
+            if (!visible) continue;
+            
             double rx = e.getX() - centerX;
             double ry = e.getY() - centerY;
             double rz = e.getZ() - centerZ;
             
-            if (e instanceof Monster) {
-                if (!ClientSettings.showEnemies) continue;
-                renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.6f, 1.8f, 0.6f, 1.0f, 0.0f, 0.0f, 1.0f);
-            } else if (e instanceof Villager) {
-                if (!ClientSettings.showVillagers) continue;
-                renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.6f, 1.8f, 0.6f, 0.6f, 0.4f, 0.3f, 1.0f);
-            } else if (e instanceof Squid) {
-                if (!ClientSettings.showAnimals) continue;
-                
-                // Determine if it's a Glow Squid
-                boolean isGlowSquid = (e instanceof GlowSquid);
-                
-                if (isGlowSquid) {
-                    // Glow Squid: Bright Cyan/Aqua
-                    // Emphasize luminosity with bright colors
-                    renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.6f, 0.6f, 0.6f, 0.0f, 1.0f, 1.0f, 1.0f);
-                } else {
-                    // Normal Squid: Dark Blue
-                    renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.6f, 0.6f, 0.6f, 0.2f, 0.2f, 0.6f, 1.0f);
-                }
-            } else if (e instanceof Animal) {
-                if (!ClientSettings.showAnimals) continue;
-                renderBox(buf, poseStack.last().pose(), rx, ry, rz, 0.5f, 0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f);
+            poseStack.pushPose();
+            poseStack.translate(rx, ry, rz);
+            
+            // Render Entity
+            // Pass the interpolated yaw to the renderer so it handles rotation correctly
+            float partialTick = mc.getPartialTick();
+            float lerpYaw = net.minecraft.util.Mth.lerp(partialTick, e.yRotO, e.getYRot());
+            
+            try {
+                // Use full bright light (15, 15) so they are visible on the map
+                mc.getEntityRenderDispatcher().render(e, 0, 0, 0, lerpYaw, partialTick, poseStack, bufferSource, LightTexture.pack(15, 15));
+            } catch (Exception ex) {
+                // Ignore rendering errors
             }
+            
+            poseStack.popPose();
         }
-        BufferUploader.drawWithShader(buf.end());
         
-        // Pass 2: Player Head
-        // Iterate all players to find client player or others
-        for (Entity e : entities) {
-            if (e instanceof AbstractClientPlayer) {
-                if (!ClientSettings.showPlayers) continue;
-                AbstractClientPlayer p = (AbstractClientPlayer) e;
-                if (p != player) { // Render other players, but NOT self (self is rendered as marker at center)
-                     renderPlayerHead(poseStack, p, centerX, centerZ, centerY);
-                }
-            }
-        }
-    }
-    
-    private static void renderPlayerHead(PoseStack poseStack, AbstractClientPlayer player, double cx, double cz, double cy) {
-        ResourceLocation skin = player.getSkinTextureLocation();
-        
-        double rx = player.getX() - cx;
-        double ry = player.getY() - cy;
-        double rz = player.getZ() - cz;
-        
-        poseStack.pushPose();
-        poseStack.translate(rx, ry, rz);
-        // Rotate to match player facing
-        poseStack.mulPose(Axis.YP.rotationDegrees(180 - player.getYRot()));
-        
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
-        
-        float headSize = 2.0f;
-        float borderSize = 2.3f;
-        
-        // 1. Render Textured Head
-        RenderSystem.setShaderTexture(0, skin);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        // Render at 0,0,0 local to the translated position
-        renderTexturedHead(buf, poseStack.last().pose(), 0, 0, 0, headSize);
-        BufferUploader.drawWithShader(buf.end());
-        
-        // 2. Render White Border (Inverted Hull)
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, borderSize, 1.0f, 1.0f, 1.0f, 1.0f);
-        BufferUploader.drawWithShader(buf.end());
-        
-        poseStack.popPose();
+        // Flush buffers to ensure entities are drawn
+        bufferSource.endBatch();
     }
 
     private static void renderBlockWithBorders(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float r, float g, float b, float a, int exposedFaces) {
@@ -1782,6 +1740,103 @@ public class VoxelMapRenderer {
         buf.vertex(pose, maxX, minY, maxZ).uv(uMin, vMax).endVertex();
         buf.vertex(pose, maxX, minY, minZ).uv(uMax, vMax).endVertex();
         buf.vertex(pose, maxX, maxY, minZ).uv(uMax, vMin).endVertex();
+    }
+    
+    private static void renderEntityHeadIcon(PoseStack poseStack, Entity e, double x, double y, double z, int borderColor) {
+        // Get Entity Texture
+        Minecraft mc = Minecraft.getInstance();
+        EntityRenderer<? super Entity> renderer = mc.getEntityRenderDispatcher().getRenderer(e);
+        ResourceLocation texture = renderer.getTextureLocation(e);
+        
+        if (texture == null) return;
+        
+        // Calculate Size based on entity width (User requested "smaller for chicken")
+        float width = e.getBbWidth();
+        float size = Math.max(0.5f, width * 1.2f); // Minimum size 0.5, scaled slightly larger than hit box
+        
+        Tesselator tess = Tesselator.getInstance();
+        BufferBuilder buf = tess.getBuilder();
+        
+        // 1. Render Border (Colored Box below texture)
+        // Extract RGBA from borderColor
+        float bA = ((borderColor >> 24) & 0xFF) / 255.0f;
+        float bR = ((borderColor >> 16) & 0xFF) / 255.0f;
+        float bG = ((borderColor >> 8) & 0xFF) / 255.0f;
+        float bB = (borderColor & 0xFF) / 255.0f;
+        
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        
+        // Render flat quad on XZ plane, slightly larger than texture
+        float borderSize = size + 0.1f;
+        float yPos = (float)y + e.getBbHeight() + 0.5f; // Float above entity head
+        
+        // Center on XZ
+        float minX = (float)(x - borderSize/2);
+        float maxX = (float)(x + borderSize/2);
+        float minZ = (float)(z - borderSize/2);
+        float maxZ = (float)(z + borderSize/2);
+        
+        buf.vertex(poseStack.last().pose(), minX, yPos, minZ).color(bR, bG, bB, bA).endVertex();
+        buf.vertex(poseStack.last().pose(), minX, yPos, maxZ).color(bR, bG, bB, bA).endVertex();
+        buf.vertex(poseStack.last().pose(), maxX, yPos, maxZ).color(bR, bG, bB, bA).endVertex();
+        buf.vertex(poseStack.last().pose(), maxX, yPos, minZ).color(bR, bG, bB, bA).endVertex();
+        
+        BufferUploader.drawWithShader(buf.end());
+        
+        // 2. Render Textured Face Quad
+        RenderSystem.setShaderTexture(0, texture);
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+        
+        float texSize = size;
+        float texY = yPos + 0.01f; // Slightly above border
+        
+        float tMinX = (float)(x - texSize/2);
+        float tMaxX = (float)(x + texSize/2);
+        float tMinZ = (float)(z - texSize/2);
+        float tMaxZ = (float)(z + texSize/2);
+        
+        // UV Calculation (Standard Face: 8,8 to 16,16)
+        // Normalized for 64x64 texture (0.125 to 0.25)
+        // Most mobs share this layout for the head face.
+        // Villager head front is at different location, but let's try standard first.
+        
+        float uMin = 8.0f / 64.0f;
+        float uMax = 16.0f / 64.0f;
+        float vMin = 8.0f / 64.0f;
+        float vMax = 16.0f / 64.0f;
+        
+        // Villager check
+        if (e instanceof Villager) {
+             // Villager texture is 64x64.
+             // Head Front is 8x10.
+             // Start (0,0) -> Face at (8, 0)? No.
+             // Based on VillagerModel:
+             // head = new ModelPart(this, 0, 0);
+             // head.addBox(-4.0F, -10.0F, -4.0F, 8.0F, 10.0F, 8.0F);
+             // Standard box UVs:
+             // Front face starts at U = z(8) = 8.
+             // V starts at z(8) = 8.
+             // Size 8x10.
+             // So U: 8->16. V: 8->18.
+             uMin = 8.0f / 64.0f;
+             uMax = 16.0f / 64.0f;
+             vMin = 8.0f / 64.0f;
+             vMax = 18.0f / 64.0f;
+        }
+        
+        // Render Quad (Facing Up)
+        // Orientation: Top of texture (vMin) is North (-Z)?
+        // Usually on map: Up is North.
+        // So vMin should be at minZ.
+        
+        buf.vertex(poseStack.last().pose(), tMinX, texY, tMinZ).uv(uMin, vMin).endVertex(); // Top-Left (North-West)
+        buf.vertex(poseStack.last().pose(), tMinX, texY, tMaxZ).uv(uMin, vMax).endVertex(); // Bottom-Left (South-West)
+        buf.vertex(poseStack.last().pose(), tMaxX, texY, tMaxZ).uv(uMax, vMax).endVertex(); // Bottom-Right (South-East)
+        buf.vertex(poseStack.last().pose(), tMaxX, texY, tMinZ).uv(uMax, vMin).endVertex(); // Top-Right (North-East)
+        
+        BufferUploader.drawWithShader(buf.end());
     }
 
     private static void renderInvertedColorBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float size, float red, float green, float blue, float alpha) {
