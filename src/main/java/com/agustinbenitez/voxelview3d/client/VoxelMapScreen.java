@@ -65,6 +65,9 @@ public class VoxelMapScreen extends Screen {
     private Button toggleCompassBtn;
     private Button toggleCoordsBtn;
     private Button renderDistanceBtn;
+    private Button autoDeathPointsBtn;
+    private Button fullBrightMapBtn;
+    private Button showChunkGridBtn;
     private Button closeSettingsBtn;
 
     public VoxelMapScreen() {
@@ -230,7 +233,7 @@ public class VoxelMapScreen extends Screen {
         
         // --- Settings Modal Widgets ---
         int settingsW = 200;
-        int settingsH = 150;
+        int settingsH = 230;
         int settingsX = (this.width - settingsW) / 2;
         int settingsY = (this.height - settingsH) / 2;
         
@@ -249,6 +252,21 @@ public class VoxelMapScreen extends Screen {
             if (ClientSettings.renderDistance > 15) ClientSettings.renderDistance = 5;
             b.setMessage(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)));
         }).bounds(settingsX + 10, settingsY + 80, settingsW - 20, 20).build());
+
+        autoDeathPointsBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.auto_death").append(Component.translatable(ClientSettings.autoDeathPoints ? "voxelview3d.on" : "voxelview3d.off")), b -> {
+            ClientSettings.autoDeathPoints = !ClientSettings.autoDeathPoints;
+            b.setMessage(Component.translatable("voxelview3d.settings.auto_death").append(Component.translatable(ClientSettings.autoDeathPoints ? "voxelview3d.on" : "voxelview3d.off")));
+        }).bounds(settingsX + 10, settingsY + 105, settingsW - 20, 20).build());
+
+        fullBrightMapBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.full_bright").append(Component.translatable(ClientSettings.fullBrightMap ? "voxelview3d.on" : "voxelview3d.off")), b -> {
+            ClientSettings.fullBrightMap = !ClientSettings.fullBrightMap;
+            b.setMessage(Component.translatable("voxelview3d.settings.full_bright").append(Component.translatable(ClientSettings.fullBrightMap ? "voxelview3d.on" : "voxelview3d.off")));
+        }).bounds(settingsX + 10, settingsY + 130, settingsW - 20, 20).build());
+
+        showChunkGridBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.chunk_grid").append(Component.translatable(ClientSettings.showChunkGrid ? "voxelview3d.on" : "voxelview3d.off")), b -> {
+            ClientSettings.showChunkGrid = !ClientSettings.showChunkGrid;
+            b.setMessage(Component.translatable("voxelview3d.settings.chunk_grid").append(Component.translatable(ClientSettings.showChunkGrid ? "voxelview3d.on" : "voxelview3d.off")));
+        }).bounds(settingsX + 10, settingsY + 155, settingsW - 20, 20).build());
         
         closeSettingsBtn = addRenderableWidget(Button.builder(Component.literal("X"), b -> {
             showSettingsModal = false;
@@ -298,6 +316,9 @@ public class VoxelMapScreen extends Screen {
         if (toggleCompassBtn != null) toggleCompassBtn.visible = showSettings;
         if (toggleCoordsBtn != null) toggleCoordsBtn.visible = showSettings;
         if (renderDistanceBtn != null) renderDistanceBtn.visible = showSettings;
+        if (autoDeathPointsBtn != null) autoDeathPointsBtn.visible = showSettings;
+        if (fullBrightMapBtn != null) fullBrightMapBtn.visible = showSettings;
+        if (showChunkGridBtn != null) showChunkGridBtn.visible = showSettings;
         if (closeSettingsBtn != null) closeSettingsBtn.visible = showSettings;
         
         // Bottom Menu controls (Hide when any modal is open)
@@ -709,7 +730,7 @@ public class VoxelMapScreen extends Screen {
     
     private void renderSettingsModal(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         int settingsW = 200;
-        int settingsH = 150;
+        int settingsH = 230;
         int settingsX = (this.width - settingsW) / 2;
         int settingsY = (this.height - settingsH) / 2;
         

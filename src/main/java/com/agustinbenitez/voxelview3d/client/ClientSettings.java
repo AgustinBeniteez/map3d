@@ -13,6 +13,9 @@ public class ClientSettings {
     // New settings
     public static int renderDistance = 10;
     public static boolean showCoords = true;
+    public static boolean autoDeathPoints = true;
+    public static boolean fullBrightMap = false;
+    public static boolean showChunkGrid = false;
 
     public static final List<Waypoint> waypoints = new ArrayList<>();
 

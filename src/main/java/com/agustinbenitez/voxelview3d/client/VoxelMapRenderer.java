@@ -106,6 +106,9 @@ public class VoxelMapRenderer {
         // Render Entities
         renderEntities(poseStack, player, renderMinY, renderMaxY, renderRadius);
 
+        // Render Chunk Grid
+        renderChunkGrid(poseStack, player, renderRadius);
+
         // Render Waypoints
         renderWaypoints(poseStack, player, cameraYaw, cameraPitch);
         
@@ -315,7 +318,7 @@ public class VoxelMapRenderer {
             float brightness = 1.0f;
             float alpha = 1.0f;
 
-            if (isUnderground) {
+            if (isUnderground && !ClientSettings.fullBrightMap) {
                 // Distance squared
                 double distSq = rx * rx + ry * ry + rz * rz;
                 double dist = Math.sqrt(distSq);
@@ -606,5 +609,64 @@ public class VoxelMapRenderer {
         buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
         buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
         buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+    }
+
+    private static void renderChunkGrid(PoseStack poseStack, Player player, int radius) {
+        if (!ClientSettings.showChunkGrid) return;
+
+        double cx = player.getX();
+        double cz = player.getZ();
+        
+        ChunkPos centerChunk = player.chunkPosition();
+        
+        Tesselator tess = Tesselator.getInstance();
+        BufferBuilder buf = tess.getBuilder();
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        RenderSystem.lineWidth(2.0f);
+        
+        // Use LINES mode
+        buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+        Matrix4f pose = poseStack.last().pose();
+        
+        int minChunkX = centerChunk.x - radius;
+        int maxChunkX = centerChunk.x + radius;
+        int minChunkZ = centerChunk.z - radius;
+        int maxChunkZ = centerChunk.z + radius;
+        
+        // Yellow color for grid, semi-transparent
+        int r = 255, g = 255, b = 0, a = 128;
+        
+        // Vertical lines (Z-axis lines, varying X)
+        for (int x = minChunkX; x <= maxChunkX + 1; x++) {
+             double worldX = x * 16.0;
+             double rx = worldX - cx;
+             
+             double worldZMin = minChunkZ * 16.0;
+             double worldZMax = (maxChunkZ + 1) * 16.0;
+             
+             double rzMin = worldZMin - cz;
+             double rzMax = worldZMax - cz;
+             
+             buf.vertex(pose, (float)rx, 0, (float)rzMin).color(r, g, b, a).endVertex();
+             buf.vertex(pose, (float)rx, 0, (float)rzMax).color(r, g, b, a).endVertex();
+        }
+        
+        // Horizontal lines (X-axis lines, varying Z)
+        for (int z = minChunkZ; z <= maxChunkZ + 1; z++) {
+             double worldZ = z * 16.0;
+             double rz = worldZ - cz;
+             
+             double worldXMin = minChunkX * 16.0;
+             double worldXMax = (maxChunkX + 1) * 16.0;
+             
+             double rxMin = worldXMin - cx;
+             double rxMax = worldXMax - cx;
+             
+             buf.vertex(pose, (float)rxMin, 0, (float)rz).color(r, g, b, a).endVertex();
+             buf.vertex(pose, (float)rxMax, 0, (float)rz).color(r, g, b, a).endVertex();
+        }
+        
+        BufferUploader.drawWithShader(buf.end());
+        RenderSystem.lineWidth(1.0f);
     }
 }
