@@ -20,6 +20,7 @@
   "voxelview3d.waypoint.list_title": "Waypoints Guardados",
   "voxelview3d.waypoint.color": "Seleccionar Color",
   "voxelview3d.waypoint.icon": "Seleccionar Icono",
+  "voxelview3d.waypoint.delete_all": "Borrar todos los waypoints",
   "voxelview3d.settings.title": "Ajustes",
   "voxelview3d.settings.compass": "Brújula",
   "voxelview3d.settings.compass.on": "ON",

@@ -29,7 +29,7 @@
   "voxelview3d.settings.auto_death": "自动死亡点: ",
   "voxelview3d.settings.full_bright": "全亮模式: ",
   "voxelview3d.settings.chunk_grid": "区块网格: ",
-  "voxelview3d.waypoint.delete_all": "删除全部",
+  "voxelview3d.waypoint.delete_all": "删除所有坐标点",
   "voxelview3d.waypoint.death_created": "死亡点已创建于 [%d, %d, %d]",
   "voxelview3d.waypoint.last_death": "上次死亡",
   "voxelview3d.waypoint.death": "死亡",

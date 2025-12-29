@@ -32,7 +32,7 @@
   "voxelview3d.settings.auto_death": "Puntos Muerte Auto: ",
   "voxelview3d.settings.full_bright": "Brillo Máximo: ",
   "voxelview3d.settings.chunk_grid": "Rejilla Chunks: ",
-  "voxelview3d.waypoint.delete_all": "Borrar Todo",
+  "voxelview3d.waypoint.delete_all": "Borrar todos los waypoints",
   "voxelview3d.zoom": "Zoom: %.1f",
   "voxelview3d.coords": "X: %d Y: %d Z: %d",
   "voxelview3d.biome.unknown": "Bioma Desconocido",

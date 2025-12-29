@@ -5,6 +5,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -42,6 +43,7 @@ public class VoxelMapScreen extends Screen {
     
     private EditBox waypointNameField;
     private EditBox wpX, wpY, wpZ;
+    private EditBox searchField; // Waypoint search
     private Button createWaypointBtn;
     private Button openCreateModeBtn; // Button in List mode to open Create mode
     private Button deleteAllBtn;
@@ -58,6 +60,8 @@ public class VoxelMapScreen extends Screen {
     private Button toggleAnimals;
     private Button toggleEnemies;
     private Button togglePlayers;
+    private Button toggleNightMode;
+    private Button toggleChunkGrid;
     private Button waypointsBtn;
     private Button closeModalBtn;
     
@@ -67,7 +71,7 @@ public class VoxelMapScreen extends Screen {
     private Button renderDistanceBtn;
     private Button autoDeathPointsBtn;
     private Button fullBrightMapBtn;
-    private Button showChunkGridBtn;
+    // private Button showChunkGridBtn; // Moved to main bar
     private Button closeSettingsBtn;
 
     public VoxelMapScreen() {
@@ -119,12 +123,38 @@ public class VoxelMapScreen extends Screen {
             new ResourceLocation("voxelview3d", "textures/types/player_hide.png"),
             () -> ClientSettings.showPlayers,
             b -> ClientSettings.showPlayers = !ClientSettings.showPlayers));
+        x += btnWidth + 10; // Extra gap for separator
+        
+        // Night Mode Toggle
+        if (this.minecraft.level != null) {
+            // Auto-sync only on init if we want to follow game time initially
+            // Or we can let it be persistent if static variable.
+            // User request: "si es de noche se cambie solo a este estado noche"
+            // So we sync it.
+            long time = this.minecraft.level.getDayTime() % 24000;
+            ClientSettings.isNightMode = time >= 13000 && time <= 23000;
+        }
+        
+        toggleNightMode = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
+            new ResourceLocation("voxelview3d", "textures/night.png"), // On (Night)
+            new ResourceLocation("voxelview3d", "textures/day.png"),   // Off (Day)
+            () -> ClientSettings.isNightMode,
+            b -> ClientSettings.isNightMode = !ClientSettings.isNightMode));
+        x += btnWidth + 5;
+
+        // Chunk Grid Toggle
+        toggleChunkGrid = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
+            new ResourceLocation("voxelview3d", "textures/chunks.png"),
+            new ResourceLocation("voxelview3d", "textures/chunkshide.png"),
+            () -> ClientSettings.showChunkGrid,
+            b -> ClientSettings.showChunkGrid = !ClientSettings.showChunkGrid));
         x += btnWidth + 5;
         
         // Waypoints Button
-        waypointsBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.waypoints"), b -> {
-            toggleModal();
-        }).bounds(x, buttonY, 70, 20).build());
+        waypointsBtn = addRenderableWidget(new IconTextButton(x, buttonY, 120, 20, 
+            Component.translatable("voxelview3d.waypoints"),
+            new ResourceLocation("voxelview3d", "textures/iconpoints.png"),
+            b -> toggleModal()));
         
         // Modal Widgets (hidden by default)
         initModalWidgets();
@@ -208,20 +238,27 @@ public class VoxelMapScreen extends Screen {
         
         // --- List Mode Widgets ---
         
+        // Search Field
+        searchField = new EditBox(this.font, modalX + 10, modalY + 35, modalW - 20, 20, Component.translatable("voxelview3d.waypoint.search"));
+        addRenderableWidget(searchField);
+
         // Open Create Mode Button (in List Mode)
-        openCreateModeBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.waypoint.create_new"), b -> {
-            isCreatingMode = true;
-            editingWaypoint = null;
-            // Pre-fill coordinates when entering create mode
-            if (minecraft.player != null) {
-                wpX.setValue(String.valueOf(minecraft.player.getBlockX()));
-                wpY.setValue(String.valueOf(minecraft.player.getBlockY()));
-                wpZ.setValue(String.valueOf(minecraft.player.getBlockZ()));
-            }
-            waypointNameField.setValue("");
-            selectedIcon = "icon1"; 
-            updateModalVisibility();
-        }).bounds(centerX - 50, modalY + modalH - 40, 100, 20).build());
+        openCreateModeBtn = addRenderableWidget(new IconTextButton(centerX - 100, modalY + modalH - 40, 200, 20, 
+            Component.translatable("voxelview3d.waypoint.create_new"), 
+            new ResourceLocation("voxelview3d", "textures/newpoint.png"),
+            b -> {
+                isCreatingMode = true;
+                editingWaypoint = null;
+                // Pre-fill coordinates when entering create mode
+                if (minecraft.player != null) {
+                    wpX.setValue(String.valueOf(minecraft.player.getBlockX()));
+                    wpY.setValue(String.valueOf(minecraft.player.getBlockY()));
+                    wpZ.setValue(String.valueOf(minecraft.player.getBlockZ()));
+                }
+                waypointNameField.setValue("");
+                selectedIcon = "icon1"; 
+                updateModalVisibility();
+            }));
         
         // Close Button (Small X in top right of the whole modal)
         closeModalBtn = addRenderableWidget(Button.builder(Component.literal("X"), b -> {
@@ -267,13 +304,8 @@ public class VoxelMapScreen extends Screen {
             b.setMessage(Component.translatable("voxelview3d.settings.full_bright").append(Component.translatable(ClientSettings.fullBrightMap ? "voxelview3d.on" : "voxelview3d.off")));
         }).bounds(settingsX + 10, settingsY + 150, settingsW - 20, 20).build());
 
-        showChunkGridBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.chunk_grid").append(Component.translatable(ClientSettings.showChunkGrid ? "voxelview3d.on" : "voxelview3d.off")), b -> {
-            ClientSettings.showChunkGrid = !ClientSettings.showChunkGrid;
-            b.setMessage(Component.translatable("voxelview3d.settings.chunk_grid").append(Component.translatable(ClientSettings.showChunkGrid ? "voxelview3d.on" : "voxelview3d.off")));
-        }).bounds(settingsX + 10, settingsY + 175, settingsW - 20, 20).build());
-        
         // Delete All Button (Settings)
-        deleteAllBtn = addRenderableWidget(new Button(settingsX + 10, settingsY + 210, settingsW - 20, 20, Component.translatable("voxelview3d.waypoint.delete_all"), b -> {
+        deleteAllBtn = addRenderableWidget(new Button(settingsX + 10, settingsY + 180, settingsW - 20, 20, Component.translatable("voxelview3d.waypoint.delete_all"), b -> {
              ClientSettings.waypoints.clear();
              WaypointManager.saveWaypoints();
         }, Supplier::get) {
@@ -302,6 +334,20 @@ public class VoxelMapScreen extends Screen {
         }).bounds(settingsX + settingsW - 25, settingsY + 10, 20, 20).build());
     }
     
+    private List<ClientSettings.Waypoint> getFilteredWaypoints() {
+        if (searchField == null || searchField.getValue().isEmpty()) {
+            return ClientSettings.waypoints;
+        }
+        String term = searchField.getValue().toLowerCase();
+        List<ClientSettings.Waypoint> filtered = new ArrayList<>();
+        for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
+            if (wp.name.toLowerCase().contains(term)) {
+                filtered.add(wp);
+            }
+        }
+        return filtered;
+    }
+
     private void toggleModal() {
         showWaypointModal = !showWaypointModal;
         showSettingsModal = false; // Close settings if opening waypoints
@@ -350,6 +396,7 @@ public class VoxelMapScreen extends Screen {
         
         // List Mode Widgets
         boolean showList = showWaypointModal && !isCreatingMode;
+        if (searchField != null) searchField.visible = showList;
         if (openCreateModeBtn != null) openCreateModeBtn.visible = showList;
         // if (deleteAllBtn != null) deleteAllBtn.visible = showList; // Removed from here
         
@@ -360,7 +407,6 @@ public class VoxelMapScreen extends Screen {
         if (renderDistanceBtn != null) renderDistanceBtn.visible = showSettings;
         if (autoDeathPointsBtn != null) autoDeathPointsBtn.visible = showSettings;
         if (fullBrightMapBtn != null) fullBrightMapBtn.visible = showSettings;
-        if (showChunkGridBtn != null) showChunkGridBtn.visible = showSettings;
         if (closeSettingsBtn != null) closeSettingsBtn.visible = showSettings;
         if (deleteAllBtn != null) deleteAllBtn.visible = showSettings;
         
@@ -370,6 +416,8 @@ public class VoxelMapScreen extends Screen {
         if (toggleAnimals != null) toggleAnimals.visible = showBottom;
         if (toggleEnemies != null) toggleEnemies.visible = showBottom;
         if (togglePlayers != null) togglePlayers.visible = showBottom;
+        if (toggleNightMode != null) toggleNightMode.visible = showBottom;
+        if (toggleChunkGrid != null) toggleChunkGrid.visible = showBottom;
         if (waypointsBtn != null) waypointsBtn.visible = showBottom;
     }
     
@@ -486,22 +534,24 @@ public class VoxelMapScreen extends Screen {
             
             // List Area
             int listX = modalX + 10;
-            int listY = modalY + 35; // Title bar space
+            int listY = modalY + 65; // Pushed down for search bar
             int itemHeight = 30; // Bigger items
             int listWidth = modalW - 20; 
             
             // Calculate visible items based on available height minus title (35) and bottom button space (50)
-            int listHeight = modalH - 85;
+            int listHeight = modalH - 115;
             
             // Adjust clicked index based on scroll
             int clickedIndex = (int)((mouseY - listY + scrollOffset) / itemHeight);
             
+            List<ClientSettings.Waypoint> waypoints = getFilteredWaypoints();
+            
             // Check if click is within list bounds visually
             if (mouseY >= listY && mouseY <= listY + listHeight && 
-                clickedIndex >= 0 && clickedIndex < ClientSettings.waypoints.size() && 
+                clickedIndex >= 0 && clickedIndex < waypoints.size() && 
                 mouseX >= listX && mouseX <= listX + listWidth) {
                 
-                 ClientSettings.Waypoint wp = ClientSettings.waypoints.get(clickedIndex);
+                 ClientSettings.Waypoint wp = waypoints.get(clickedIndex);
                  int rowY = (int)(listY + (clickedIndex * itemHeight) - scrollOffset);
                  
                  // Buttons positions relative to list right edge
@@ -547,7 +597,7 @@ public class VoxelMapScreen extends Screen {
                  
                  if (mouseX >= rightEdge - 30 && mouseX < rightEdge - 10) {
                      // Delete
-                     ClientSettings.waypoints.remove(clickedIndex);
+                     ClientSettings.waypoints.remove(wp);
                      WaypointManager.saveWaypoints();
                      return true;
                  }
@@ -599,6 +649,26 @@ public class VoxelMapScreen extends Screen {
         int menuY = this.height - menuHeight;
         if (!showWaypointModal && !showSettingsModal) { 
              guiGraphics.fill(0, menuY, this.width, this.height, 0x80000000); // Semi-transparent black
+             
+             // Draw Separator Pipe between Type toggles and Night Mode toggle
+             // We added 4 toggle buttons (Villager, Animal, Enemy, Player)
+             // Each is 20 wide + 5 gap. Starts at x=10.
+             // 10 + 20+5 + 20+5 + 20+5 + 20 = 10 + 25 + 25 + 25 + 20 = 105
+             // The next button (NightMode) is at x + 10 = 115.
+             // Separator should be around 110.
+             // Let's calculate it dynamically or hardcode it since button sizes are fixed.
+             // x start = 10
+             // 4 buttons * (20 width + 5 gap) = 100 width covered. Last gap is 5.
+             // The position after last button is 10 + 25*3 + 20 = 105.
+             // We added extra 5 gap (total 10 gap) before NightMode.
+             // So separator at 105 + 5 = 110.
+             
+             int separatorX = 10 + (25 * 4); // 110
+             int sepY = menuY + 5;
+             int sepH = 25; // height of separator
+             
+             // Draw Pipe
+             guiGraphics.fill(separatorX, sepY, separatorX + 1, sepY + sepH, 0xFF888888); // Gray vertical line
         }
         
         // Draw Settings Button (Top Left)
@@ -620,6 +690,13 @@ public class VoxelMapScreen extends Screen {
         
         // Draw Zoom Level
         if (!showWaypointModal && !showSettingsModal) {
+            // Draw Zoom Icon
+            ResourceLocation zoomIcon = new ResourceLocation("voxelview3d", "textures/zoom.png");
+            RenderSystem.setShaderTexture(0, zoomIcon);
+            RenderSystem.enableBlend();
+            guiGraphics.blit(zoomIcon, this.width - 100, menuY + 6, 0, 0, 16, 16, 16, 16);
+            RenderSystem.disableBlend();
+
             Component zoomText = Component.translatable("voxelview3d.zoom", String.format("%.1f", zoom));
             guiGraphics.drawString(this.font, zoomText, this.width - 80, menuY + 10, 0xFFFFFFFF);
             
@@ -668,17 +745,7 @@ public class VoxelMapScreen extends Screen {
         // Render Widgets (Buttons, etc.)
         super.render(guiGraphics, mouseX, mouseY, partialTicks);
         
-        // Draw icon on waypoints button
-        if (waypointsBtn != null && waypointsBtn.visible) {
-            ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/iconpoints.png");
-            RenderSystem.setShaderTexture(0, iconLoc);
-            RenderSystem.enableBlend();
-            // Draw icon slightly to the left of text or centered if no text
-            // Button bounds: waypointsBtn.getX(), waypointsBtn.getY(), width 70, height 20
-            // Let's place it at x+5, y+2 (size 16x16)
-            guiGraphics.blit(iconLoc, waypointsBtn.getX() + 5, waypointsBtn.getY() + 2, 0, 0, 16, 16, 16, 16);
-            RenderSystem.disableBlend();
-        }
+        // Draw icon on waypoints button handled by IconTextButton
         
         // Render Modal Overlays (Icons, Selection Borders) if open
         if (showWaypointModal && isCreatingMode) {
@@ -847,17 +914,19 @@ public class VoxelMapScreen extends Screen {
         } else {
             // Render List
             int listX = modalX + 10;
-            int listY = modalY + 35;
+            int listY = modalY + 65; // Pushed down for search bar
             int itemHeight = 30;
-            int listHeight = modalH - 85; // Reserve space for button at bottom
+            int listHeight = modalH - 115; // Reserve space for search bar (30) and button at bottom (85) -> total 115
             
             int listWidth = modalW - 20;
             
             // Enable Scissor to clip content
             guiGraphics.enableScissor(listX, listY, listX + listWidth, listY + listHeight);
             
-            for (int i = 0; i < ClientSettings.waypoints.size(); i++) {
-                 ClientSettings.Waypoint wp = ClientSettings.waypoints.get(i);
+            List<ClientSettings.Waypoint> waypoints = getFilteredWaypoints();
+            
+            for (int i = 0; i < waypoints.size(); i++) {
+                 ClientSettings.Waypoint wp = waypoints.get(i);
                  int rowY = (int)(listY + (i * itemHeight) - scrollOffset);
                  
                  // Skip if out of view
@@ -926,7 +995,7 @@ public class VoxelMapScreen extends Screen {
             guiGraphics.disableScissor();
             
             // Scrollbar
-            int totalContentHeight = ClientSettings.waypoints.size() * itemHeight;
+            int totalContentHeight = waypoints.size() * itemHeight;
             if (totalContentHeight > listHeight) {
                 int scrollBarW = 6;
                 int scrollBarX = listX + listWidth - scrollBarW - 2;
@@ -977,9 +1046,9 @@ public class VoxelMapScreen extends Screen {
              int modalY = margin;
              
              int listX = modalX + 10;
-             int listY = modalY + 35;
+             int listY = modalY + 65;
              int listWidth = modalW - 20;
-             int listHeight = modalH - 85; // Matches render logic
+             int listHeight = modalH - 115; // Matches render logic
              
              if (mouseX >= listX && mouseX <= listX + listWidth && mouseY >= listY && mouseY <= listY + listHeight) {
                  this.scrollOffset -= delta * 20; // Scroll speed
@@ -987,7 +1056,7 @@ public class VoxelMapScreen extends Screen {
                  
                  // Calculate max scroll
                  int itemHeight = 30;
-                 int totalHeight = ClientSettings.waypoints.size() * itemHeight;
+                 int totalHeight = getFilteredWaypoints().size() * itemHeight;
                  int maxScroll = Math.max(0, totalHeight - listHeight);
                  
                  if (this.scrollOffset > maxScroll) this.scrollOffset = maxScroll;
@@ -1061,6 +1130,43 @@ public class VoxelMapScreen extends Screen {
             int iconSize = width - 4;
             guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
             RenderSystem.disableBlend();
+        }
+    }
+
+    private static class IconTextButton extends Button {
+        private final ResourceLocation icon;
+
+        public IconTextButton(int x, int y, int width, int height, Component message, ResourceLocation icon, OnPress onPress) {
+            super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
+            this.icon = icon;
+        }
+
+        @Override
+        public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            // Draw background
+            int color = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
+            guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x80000000); // Semi-transparent black
+            guiGraphics.renderOutline(getX(), getY(), width, height, color); // Border
+            
+            // Calculate positions to center content (Icon + Text)
+            Font font = Minecraft.getInstance().font;
+            int textWidth = font.width(getMessage());
+            int iconWidth = 16;
+            int gap = 3; // Small gap
+            int totalContentWidth = iconWidth + gap + textWidth;
+            
+            int contentX = getX() + (width - totalContentWidth) / 2;
+            int iconY = getY() + (height - 16) / 2;
+            int textY = getY() + (height - 8) / 2;
+            
+            // Draw Icon
+            RenderSystem.setShaderTexture(0, icon);
+            RenderSystem.enableBlend();
+            guiGraphics.blit(icon, contentX, iconY, 0, 0, 16, 16, 16, 16);
+            RenderSystem.disableBlend();
+            
+            // Draw Text
+            guiGraphics.drawString(font, getMessage(), contentX + iconWidth + gap, textY, color);
         }
     }
 }

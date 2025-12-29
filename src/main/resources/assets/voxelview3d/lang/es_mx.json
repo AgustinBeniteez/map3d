@@ -18,7 +18,7 @@
   "voxelview3d.waypoint.create_title": "Crear Nuevo Waypoint",
   "voxelview3d.waypoint.edit_title": "Editar Waypoint",
   "voxelview3d.waypoint.list_title": "Waypoints Guardados",
-  "voxelview3d.waypoint.delete_all": "Borrar Todos",
+  "voxelview3d.waypoint.delete_all": "Borrar todos los waypoints",
   "voxelview3d.waypoint.color": "Seleccionar Color",
   "voxelview3d.waypoint.icon": "Seleccionar Icono",
   "voxelview3d.waypoint.death_created": "Punto de muerte creado en [%d, %d, %d]",

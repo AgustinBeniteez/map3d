@@ -286,8 +286,9 @@ public class VoxelMapRenderer {
     }
     
     private static void renderChunkBlocks(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground) {
-        int[] packedPositions = chunkData.packedPositions;
+        int[] packedPositions = chunkData.positions;
         int[] colors = chunkData.colors;
+        byte[] lights = chunkData.lights;
         
         if (packedPositions == null) return;
         
@@ -298,6 +299,7 @@ public class VoxelMapRenderer {
             int x = packed & 0xF;
             int z = (packed >> 4) & 0xF;
             int relY = (packed >> 8) & 0x1FF;
+            int renderType = (packed >> 17) & 0xF;
             
             int h = relY + minBuildHeight;
             
@@ -346,9 +348,45 @@ public class VoxelMapRenderer {
                     alpha = (float) (0.3 + t * 0.7);
                 }
             }
+            
+            // Night Mode Lighting Logic
+            if (ClientSettings.isNightMode && lights != null && i < lights.length) {
+                int lightLevel = lights[i];
+                
+                // Add light level contribution (up to 1.0)
+                float nightBase = 0.25f; 
+                float lightContrib = (lightLevel / 15.0f);
+                float nightFactor = nightBase + (lightContrib * (1.0f - nightBase));
+                
+                brightness *= nightFactor;
+            }
 
-            // Render block as a box (1.0 size for solid terrain)
-            renderBox(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+            // Render based on Type
+            if (renderType == 1) { // RENDER_TORCH
+                // Small box, centered at bottom of block space
+                // Visual size: 0.2 x 0.6 x 0.2
+                renderBox(buf, pose, rx, ry - 0.2, rz, 0.2f, 0.6f, 0.2f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+            } else if (renderType == 2) { // RENDER_LANTERN
+                // Lantern: Metal Top, Color Bottom
+                // Total height ~0.5. Width ~0.35.
+                
+                // 1. Bottom Light Part
+                // Pos: ry - 0.3 (Lower part). Height 0.4.
+                renderBox(buf, pose, rx, ry - 0.3, rz, 0.3f, 0.4f, 0.3f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                
+                // 2. Top Metal Part
+                // Pos: ry - 0.05 (Top cap). Height 0.1. Wider cap.
+                // Color: Dark Gray (0x444444) -> r=68, g=68, b=68
+                float metalR = 68 / 255.0f;
+                float metalG = 68 / 255.0f;
+                float metalB = 68 / 255.0f;
+                
+                renderBox(buf, pose, rx, ry - 0.05, rz, 0.35f, 0.1f, 0.35f, metalR * brightness, metalG * brightness, metalB * brightness, alpha);
+                
+            } else {
+                // Render block as a box (1.0 size for solid terrain)
+                renderBox(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+            }
         }
     }
     
