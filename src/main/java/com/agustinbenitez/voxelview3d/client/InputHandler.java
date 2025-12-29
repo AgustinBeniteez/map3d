@@ -16,6 +16,12 @@ public class InputHandler {
             while (KeyBindings.OPEN_MAP_KEY.consumeClick()) {
                 Minecraft.getInstance().setScreen(new VoxelMapScreen());
             }
+            while (KeyBindings.OPEN_WAYPOINTS_LIST_KEY.consumeClick()) {
+                Minecraft.getInstance().setScreen(new VoxelMapScreen(true));
+            }
+            while (KeyBindings.CREATE_WAYPOINT_KEY.consumeClick()) {
+                Minecraft.getInstance().setScreen(new VoxelMapScreen(true, true));
+            }
         }
     }
 }

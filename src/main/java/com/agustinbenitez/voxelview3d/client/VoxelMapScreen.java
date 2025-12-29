@@ -71,7 +71,17 @@ public class VoxelMapScreen extends Screen {
     private Button closeSettingsBtn;
 
     public VoxelMapScreen() {
+        this(false);
+    }
+
+    public VoxelMapScreen(boolean openWaypoints) {
+        this(openWaypoints, false);
+    }
+
+    public VoxelMapScreen(boolean openWaypoints, boolean createMode) {
         super(Component.translatable("voxelview3d.title"));
+        this.showWaypointModal = openWaypoints;
+        this.isCreatingMode = createMode;
     }
     
     @Override
@@ -211,13 +221,7 @@ public class VoxelMapScreen extends Screen {
             waypointNameField.setValue("");
             selectedIcon = "icon1"; 
             updateModalVisibility();
-        }).bounds(centerX - 105, modalY + modalH - 40, 100, 20).build());
-        
-        // Delete All Button
-        deleteAllBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.waypoint.delete_all"), b -> {
-            ClientSettings.waypoints.clear();
-            WaypointManager.saveWaypoints();
-        }).bounds(centerX + 5, modalY + modalH - 40, 100, 20).build());
+        }).bounds(centerX - 50, modalY + modalH - 40, 100, 20).build());
         
         // Close Button (Small X in top right of the whole modal)
         closeModalBtn = addRenderableWidget(Button.builder(Component.literal("X"), b -> {
@@ -233,51 +237,77 @@ public class VoxelMapScreen extends Screen {
         
         // --- Settings Modal Widgets ---
         int settingsW = 200;
-        int settingsH = 230;
+        int settingsH = 245; // Reduced height to fit content better
         int settingsX = (this.width - settingsW) / 2;
         int settingsY = (this.height - settingsH) / 2;
         
         toggleCompassBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.compass").append(": ").append(Component.translatable(ClientSettings.showCompass ? "voxelview3d.settings.compass.on" : "voxelview3d.settings.compass.off")), b -> {
             ClientSettings.showCompass = !ClientSettings.showCompass;
             b.setMessage(Component.translatable("voxelview3d.settings.compass").append(": ").append(Component.translatable(ClientSettings.showCompass ? "voxelview3d.settings.compass.on" : "voxelview3d.settings.compass.off")));
-        }).bounds(settingsX + 10, settingsY + 30, settingsW - 20, 20).build());
+        }).bounds(settingsX + 10, settingsY + 50, settingsW - 20, 20).build());
         
         toggleCoordsBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.coords").append(Component.translatable(ClientSettings.showCoords ? "voxelview3d.on" : "voxelview3d.off")), b -> {
             ClientSettings.showCoords = !ClientSettings.showCoords;
             b.setMessage(Component.translatable("voxelview3d.settings.coords").append(Component.translatable(ClientSettings.showCoords ? "voxelview3d.on" : "voxelview3d.off")));
-        }).bounds(settingsX + 10, settingsY + 55, settingsW - 20, 20).build());
+        }).bounds(settingsX + 10, settingsY + 75, settingsW - 20, 20).build());
         
         renderDistanceBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)), b -> {
             ClientSettings.renderDistance += 5;
             if (ClientSettings.renderDistance > 15) ClientSettings.renderDistance = 5;
             b.setMessage(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)));
-        }).bounds(settingsX + 10, settingsY + 80, settingsW - 20, 20).build());
+        }).bounds(settingsX + 10, settingsY + 100, settingsW - 20, 20).build());
 
         autoDeathPointsBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.auto_death").append(Component.translatable(ClientSettings.autoDeathPoints ? "voxelview3d.on" : "voxelview3d.off")), b -> {
             ClientSettings.autoDeathPoints = !ClientSettings.autoDeathPoints;
             b.setMessage(Component.translatable("voxelview3d.settings.auto_death").append(Component.translatable(ClientSettings.autoDeathPoints ? "voxelview3d.on" : "voxelview3d.off")));
-        }).bounds(settingsX + 10, settingsY + 105, settingsW - 20, 20).build());
+        }).bounds(settingsX + 10, settingsY + 125, settingsW - 20, 20).build());
 
         fullBrightMapBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.full_bright").append(Component.translatable(ClientSettings.fullBrightMap ? "voxelview3d.on" : "voxelview3d.off")), b -> {
             ClientSettings.fullBrightMap = !ClientSettings.fullBrightMap;
             b.setMessage(Component.translatable("voxelview3d.settings.full_bright").append(Component.translatable(ClientSettings.fullBrightMap ? "voxelview3d.on" : "voxelview3d.off")));
-        }).bounds(settingsX + 10, settingsY + 130, settingsW - 20, 20).build());
+        }).bounds(settingsX + 10, settingsY + 150, settingsW - 20, 20).build());
 
         showChunkGridBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.chunk_grid").append(Component.translatable(ClientSettings.showChunkGrid ? "voxelview3d.on" : "voxelview3d.off")), b -> {
             ClientSettings.showChunkGrid = !ClientSettings.showChunkGrid;
             b.setMessage(Component.translatable("voxelview3d.settings.chunk_grid").append(Component.translatable(ClientSettings.showChunkGrid ? "voxelview3d.on" : "voxelview3d.off")));
-        }).bounds(settingsX + 10, settingsY + 155, settingsW - 20, 20).build());
+        }).bounds(settingsX + 10, settingsY + 175, settingsW - 20, 20).build());
         
+        // Delete All Button (Settings)
+        deleteAllBtn = addRenderableWidget(new Button(settingsX + 10, settingsY + 210, settingsW - 20, 20, Component.translatable("voxelview3d.waypoint.delete_all"), b -> {
+             ClientSettings.waypoints.clear();
+             WaypointManager.saveWaypoints();
+        }, Supplier::get) {
+            @Override
+            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                // Draw background (Reddish?)
+                int color = isHovered ? 0xFFFF0000 : 0xFFAA0000;
+                guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x80000000); // Black background
+                guiGraphics.renderOutline(getX(), getY(), width, height, color); // Red border
+                
+                // Draw Icon
+                ResourceLocation icon = new ResourceLocation("voxelview3d", "textures/deletehover.png");
+                RenderSystem.setShaderTexture(0, icon);
+                RenderSystem.enableBlend();
+                guiGraphics.blit(icon, getX() + 5, getY() + 2, 0, 0, 16, 16, 16, 16);
+                RenderSystem.disableBlend();
+                
+                // Draw Text (Red)
+                guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2 + 10, getY() + (height - 8) / 2, 0xFFFF5555);
+            }
+        });
+
         closeSettingsBtn = addRenderableWidget(Button.builder(Component.literal("X"), b -> {
             showSettingsModal = false;
             updateModalVisibility();
-        }).bounds(settingsX + settingsW - 25, settingsY + 5, 20, 20).build());
+        }).bounds(settingsX + settingsW - 25, settingsY + 10, 20, 20).build());
     }
     
     private void toggleModal() {
         showWaypointModal = !showWaypointModal;
         showSettingsModal = false; // Close settings if opening waypoints
-        isCreatingMode = false; // Always start in List mode
+        if (!isCreatingMode) {
+             isCreatingMode = false; // Keep create mode if it was already set (via constructor)
+        }
         editingWaypoint = null;
         updateModalVisibility();
     }
@@ -293,6 +323,18 @@ public class VoxelMapScreen extends Screen {
         if (wpX != null) wpX.visible = showCreate;
         if (wpY != null) wpY.visible = showCreate;
         if (wpZ != null) wpZ.visible = showCreate;
+        
+        // Auto-fill coords if opening create mode for new waypoint
+        if (showCreate && editingWaypoint == null && Minecraft.getInstance().player != null) {
+            // Only fill if empty to avoid overwriting user input or existing edits
+            if (wpX.getValue().isEmpty() && wpY.getValue().isEmpty() && wpZ.getValue().isEmpty()) {
+                 Player p = Minecraft.getInstance().player;
+                 wpX.setValue(String.valueOf(p.getBlockX()));
+                 wpY.setValue(String.valueOf(p.getBlockY()));
+                 wpZ.setValue(String.valueOf(p.getBlockZ()));
+            }
+        }
+        
         if (createWaypointBtn != null) {
             createWaypointBtn.visible = showCreate;
             createWaypointBtn.setMessage(editingWaypoint != null ? Component.translatable("voxelview3d.waypoint.save_changes") : Component.translatable("voxelview3d.waypoint.create"));
@@ -309,7 +351,7 @@ public class VoxelMapScreen extends Screen {
         // List Mode Widgets
         boolean showList = showWaypointModal && !isCreatingMode;
         if (openCreateModeBtn != null) openCreateModeBtn.visible = showList;
-        if (deleteAllBtn != null) deleteAllBtn.visible = showList;
+        // if (deleteAllBtn != null) deleteAllBtn.visible = showList; // Removed from here
         
         // Settings Modal Widgets
         boolean showSettings = showSettingsModal;
@@ -320,6 +362,7 @@ public class VoxelMapScreen extends Screen {
         if (fullBrightMapBtn != null) fullBrightMapBtn.visible = showSettings;
         if (showChunkGridBtn != null) showChunkGridBtn.visible = showSettings;
         if (closeSettingsBtn != null) closeSettingsBtn.visible = showSettings;
+        if (deleteAllBtn != null) deleteAllBtn.visible = showSettings;
         
         // Bottom Menu controls (Hide when any modal is open)
         boolean showBottom = !showWaypointModal && !showSettingsModal;
@@ -369,6 +412,25 @@ public class VoxelMapScreen extends Screen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (KeyBindings.OPEN_MAP_KEY.matches(keyCode, scanCode)) {
             this.onClose();
+            return true;
+        }
+
+        if (KeyBindings.CREATE_WAYPOINT_KEY.matches(keyCode, scanCode)) {
+            showWaypointModal = true;
+            isCreatingMode = true;
+            showSettingsModal = false; // Ensure settings are closed
+            editingWaypoint = null;
+            
+            // Pre-fill coordinates
+            if (minecraft.player != null) {
+                wpX.setValue(String.valueOf(minecraft.player.getBlockX()));
+                wpY.setValue(String.valueOf(minecraft.player.getBlockY()));
+                wpZ.setValue(String.valueOf(minecraft.player.getBlockZ()));
+            }
+            waypointNameField.setValue("");
+            selectedIcon = "icon1";
+            
+            updateModalVisibility();
             return true;
         }
 
@@ -730,7 +792,7 @@ public class VoxelMapScreen extends Screen {
     
     private void renderSettingsModal(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         int settingsW = 200;
-        int settingsH = 230;
+        int settingsH = 245;
         int settingsX = (this.width - settingsW) / 2;
         int settingsY = (this.height - settingsH) / 2;
         
@@ -738,13 +800,13 @@ public class VoxelMapScreen extends Screen {
         guiGraphics.fill(settingsX, settingsY, settingsX + settingsW, settingsY + settingsH, 0xF0101010);
         
         // Title Bar
-        guiGraphics.fill(settingsX, settingsY, settingsX + settingsW, settingsY + 25, 0xFF000000);
+        guiGraphics.fill(settingsX, settingsY, settingsX + settingsW, settingsY + 40, 0xFF000000);
         
         // Border
         guiGraphics.renderOutline(settingsX, settingsY, settingsW, settingsH, 0xFF404040);
         
         // Title
-        guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.settings.title"), settingsX + settingsW / 2, settingsY + 8, 0xFFFFFFFF);
+        guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.settings.title"), settingsX + settingsW / 2, settingsY + 15, 0xFFFFFFFF);
     }
 
     private void renderWaypointModal(GuiGraphics guiGraphics, int mouseX, int mouseY) {

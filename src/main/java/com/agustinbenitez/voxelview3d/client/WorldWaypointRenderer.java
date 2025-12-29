@@ -80,6 +80,11 @@ public class WorldWaypointRenderer {
             buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
             
             int color = baseWp.color;
+            // Force gray beam for death waypoints, as users report it looks white
+            if ("dead".equals(baseWp.iconName)) {
+                color = 0x555555;
+            }
+            
             float r = ((color >> 16) & 0xFF) / 255.0f;
             float g = ((color >> 8) & 0xFF) / 255.0f;
             float b = (color & 0xFF) / 255.0f;

@@ -29,8 +29,16 @@
   "voxelview3d.settings.compass.off": "OFF",
   "voxelview3d.settings.coords": "Mostrar Coords: ",
   "voxelview3d.settings.render_dist": "Dist. Render: ",
+  "voxelview3d.settings.auto_death": "Puntos Muerte Auto: ",
+  "voxelview3d.settings.full_bright": "Brillo Máximo: ",
+  "voxelview3d.settings.chunk_grid": "Rejilla Chunks: ",
+  "voxelview3d.waypoint.delete_all": "Borrar Todo",
   "voxelview3d.zoom": "Zoom: %.1f",
   "voxelview3d.coords": "X: %d Y: %d Z: %d",
   "voxelview3d.biome.unknown": "Bioma Desconocido",
-  "voxelview3d.unknown": "Desconocido"
+  "voxelview3d.unknown": "Desconocido",
+  "key.categories.voxelview3d": "VoxelView 3D",
+  "key.voxelview3d.open_map": "Abrir Mapa",
+  "key.voxelview3d.open_waypoints_list": "Abrir Lista Waypoints",
+  "key.voxelview3d.create_waypoint": "Crear Waypoint Rápido"
 }

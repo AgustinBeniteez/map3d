@@ -48,6 +48,8 @@ public class VoxelView3D {
         @SubscribeEvent
         public static void registerKeys(RegisterKeyMappingsEvent event) {
             event.register(KeyBindings.OPEN_MAP_KEY);
+            event.register(KeyBindings.OPEN_WAYPOINTS_LIST_KEY);
+            event.register(KeyBindings.CREATE_WAYPOINT_KEY);
         }
 
         @SubscribeEvent

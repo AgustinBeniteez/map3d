@@ -26,8 +26,19 @@
   "voxelview3d.settings.compass.off": "关闭",
   "voxelview3d.settings.coords": "显示坐标: ",
   "voxelview3d.settings.render_dist": "渲染距离: ",
+  "voxelview3d.settings.auto_death": "自动死亡点: ",
+  "voxelview3d.settings.full_bright": "全亮模式: ",
+  "voxelview3d.settings.chunk_grid": "区块网格: ",
+  "voxelview3d.waypoint.delete_all": "删除全部",
+  "voxelview3d.waypoint.death_created": "死亡点已创建于 [%d, %d, %d]",
+  "voxelview3d.waypoint.last_death": "上次死亡",
+  "voxelview3d.waypoint.death": "死亡",
   "voxelview3d.zoom": "缩放: %.1f",
   "voxelview3d.coords": "X: %d Y: %d Z: %d",
   "voxelview3d.biome.unknown": "未知生物群系",
-  "voxelview3d.unknown": "未知"
+  "voxelview3d.unknown": "未知",
+  "key.categories.voxelview3d": "VoxelView 3D",
+  "key.voxelview3d.open_map": "打开地图",
+  "key.voxelview3d.open_waypoints_list": "打开坐标点列表",
+  "key.voxelview3d.create_waypoint": "快速创建坐标点"
 }

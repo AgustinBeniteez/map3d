@@ -36,5 +36,9 @@
   "voxelview3d.zoom": "Zoom: %.1f",
   "voxelview3d.coords": "X: %d Y: %d Z: %d",
   "voxelview3d.biome.unknown": "Unknown Biome",
-  "voxelview3d.unknown": "Unknown"
+  "voxelview3d.unknown": "Unknown",
+  "key.categories.voxelview3d": "VoxelView 3D",
+  "key.voxelview3d.open_map": "Open Map",
+  "key.voxelview3d.open_waypoints_list": "Open Waypoints List",
+  "key.voxelview3d.create_waypoint": "Quick Create Waypoint"
 }

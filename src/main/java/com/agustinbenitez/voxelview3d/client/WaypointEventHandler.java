@@ -66,9 +66,9 @@ public class WaypointEventHandler {
                 }
                 
                 if (!alreadyExistsAtLocation) {
-                    // Create new "Last Death" waypoint (Gray color: 0xAAAAAA)
+                    // Create new "Last Death" waypoint (Gray color: 0x555555)
                     // Icon "dead" maps to dead.png
-                    ClientSettings.waypoints.add(new ClientSettings.Waypoint(lastDeathName, x, y, z, 0xAAAAAA, "dead")); 
+                    ClientSettings.waypoints.add(new ClientSettings.Waypoint(lastDeathName, x, y, z, 0x555555, "dead")); 
                     WaypointManager.saveWaypoints();
                     
                     mc.player.displayClientMessage(Component.translatable("voxelview3d.waypoint.death_created", x, y, z), false);

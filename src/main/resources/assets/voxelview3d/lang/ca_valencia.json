@@ -26,8 +26,19 @@
   "voxelview3d.settings.compass.off": "NO",
   "voxelview3d.settings.coords": "Mostrar Coords: ",
   "voxelview3d.settings.render_dist": "Distància Render: ",
+  "voxelview3d.settings.auto_death": "Punts Mort Auto: ",
+  "voxelview3d.settings.full_bright": "Brillantor Màxima: ",
+  "voxelview3d.settings.chunk_grid": "Reixeta Chunks: ",
+  "voxelview3d.waypoint.delete_all": "Esborrar Tot",
+  "voxelview3d.waypoint.death_created": "Punt de mort creat a [%d, %d, %d]",
+  "voxelview3d.waypoint.last_death": "Última Mort",
+  "voxelview3d.waypoint.death": "Mort",
   "voxelview3d.zoom": "Zoom: %.1f",
   "voxelview3d.coords": "X: %d Y: %d Z: %d",
   "voxelview3d.biome.unknown": "Bioma Desconegut",
-  "voxelview3d.unknown": "Desconegut"
+  "voxelview3d.unknown": "Desconegut",
+  "key.categories.voxelview3d": "VoxelView 3D",
+  "key.voxelview3d.open_map": "Obrir Mapa",
+  "key.voxelview3d.open_waypoints_list": "Obrir Llista Punts",
+  "key.voxelview3d.create_waypoint": "Crear Punt Ràpid"
 }
