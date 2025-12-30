@@ -2082,27 +2082,71 @@ public class VoxelMapRenderer {
                 boolean cE = (exposedFaces & 4) != 0;
                 boolean cW = (exposedFaces & 8) != 0;
                 
-                float gR = (r * brightness) / 255.0f;
-                float gG = (g * brightness) / 255.0f;
-                float gB = (b * brightness) / 255.0f;
-                float glassAlpha = 0.4f;
+                // Fix Color: Glass panes might be dark in map data. Force a lighter tint if needed.
+                // Or just assume they should be bright.
+                // Boost brightness slightly for glass
+                float boost = 1.2f;
+                float gR = Math.min(1.0f, (r * brightness * boost) / 255.0f);
+                float gG = Math.min(1.0f, (g * brightness * boost) / 255.0f);
+                float gB = Math.min(1.0f, (b * brightness * boost) / 255.0f);
+                float glassAlpha = 0.3f; // More transparent
                 
-                // Glass Pane Model: Flat sheets, not bars
-                // Post: 2x2 pixels -> 0.125f thickness (Center column)
-                float postTh = 0.125f;
+                // Border Color: Opaque and slightly visible
+                float bR = gR;
+                float bG = gG;
+                float bB = gB;
+                float bAlpha = 0.9f;
+                float bTh = 0.03f; // Border thickness
                 
-                // Render Center Post
-                renderBoxWithOutlines(buf, pose, rx, ryOff, rz, postTh, 1.0f, postTh, gR, gG, gB, glassAlpha);
+                // Glass Pane Model: Flat sheets with borders
+                // Post: Thin vertical column
+                float postTh = 0.1f; // Same as paneTh for seamless look
                 
-                // Arms: Flat panes (2 pixels thick)
-                float paneTh = 0.125f;
-                float armL = 0.4375f; // Reach to edge
-                float armOffset = 0.5f - (armL / 2.0f);
-                
-                if (cN) renderBoxWithOutlines(buf, pose, rx, ryOff, rz - armOffset, paneTh, 1.0f, armL, gR, gG, gB, glassAlpha);
-                if (cS) renderBoxWithOutlines(buf, pose, rx, ryOff, rz + armOffset, paneTh, 1.0f, armL, gR, gG, gB, glassAlpha);
-                if (cE) renderBoxWithOutlines(buf, pose, rx + armOffset, ryOff, rz, armL, 1.0f, paneTh, gR, gG, gB, glassAlpha);
-                if (cW) renderBoxWithOutlines(buf, pose, rx - armOffset, ryOff, rz, armL, 1.0f, paneTh, gR, gG, gB, glassAlpha);
+                // If no connections, it's just a vertical post
+                if (!cN && !cS && !cE && !cW) {
+                    // Main Glass
+                    renderBox(buf, pose, rx, ryOff, rz, postTh, 1.0f, postTh, gR, gG, gB, glassAlpha);
+                    // Borders (Vertical edges for isolated post)
+                    renderBox(buf, pose, rx - postTh/2, ryOff, rz - postTh/2, bTh, 1.0f, bTh, bR, bG, bB, bAlpha);
+                    renderBox(buf, pose, rx + postTh/2, ryOff, rz - postTh/2, bTh, 1.0f, bTh, bR, bG, bB, bAlpha);
+                    renderBox(buf, pose, rx - postTh/2, ryOff, rz + postTh/2, bTh, 1.0f, bTh, bR, bG, bB, bAlpha);
+                    renderBox(buf, pose, rx + postTh/2, ryOff, rz + postTh/2, bTh, 1.0f, bTh, bR, bG, bB, bAlpha);
+                } else {
+                    // Center Post
+                    renderBox(buf, pose, rx, ryOff, rz, postTh, 1.0f, postTh, gR, gG, gB, glassAlpha);
+                    // Post Top/Bottom Borders (to connect with arms)
+                    renderBox(buf, pose, rx, ryOff + 1.0f - bTh, rz, postTh, bTh, postTh, bR, bG, bB, bAlpha);
+                    renderBox(buf, pose, rx, ryOff, rz, postTh, bTh, postTh, bR, bG, bB, bAlpha);
+                    
+                    // Arms
+                    float paneTh = 0.1f; // Very thin glass
+                    float armL = 0.45f; // Reach to edge (0.5 - postTh/2) = 0.45
+                    float armOffset = 0.5f - (armL / 2.0f);
+                    
+                    if (cN) {
+                        // Glass
+                        renderBox(buf, pose, rx, ryOff, rz - armOffset, paneTh, 1.0f, armL, gR, gG, gB, glassAlpha);
+                        // Top Border
+                        renderBox(buf, pose, rx, ryOff + 1.0f - bTh, rz - armOffset, bTh, bTh, armL, bR, bG, bB, bAlpha);
+                        // Bottom Border
+                        renderBox(buf, pose, rx, ryOff, rz - armOffset, bTh, bTh, armL, bR, bG, bB, bAlpha);
+                    }
+                    if (cS) {
+                         renderBox(buf, pose, rx, ryOff, rz + armOffset, paneTh, 1.0f, armL, gR, gG, gB, glassAlpha);
+                         renderBox(buf, pose, rx, ryOff + 1.0f - bTh, rz + armOffset, bTh, bTh, armL, bR, bG, bB, bAlpha);
+                         renderBox(buf, pose, rx, ryOff, rz + armOffset, bTh, bTh, armL, bR, bG, bB, bAlpha);
+                    }
+                    if (cE) {
+                        renderBox(buf, pose, rx + armOffset, ryOff, rz, armL, 1.0f, paneTh, gR, gG, gB, glassAlpha);
+                        renderBox(buf, pose, rx + armOffset, ryOff + 1.0f - bTh, rz, armL, bTh, bTh, bR, bG, bB, bAlpha);
+                        renderBox(buf, pose, rx + armOffset, ryOff, rz, armL, bTh, bTh, bR, bG, bB, bAlpha);
+                    }
+                    if (cW) {
+                        renderBox(buf, pose, rx - armOffset, ryOff, rz, armL, 1.0f, paneTh, gR, gG, gB, glassAlpha);
+                        renderBox(buf, pose, rx - armOffset, ryOff + 1.0f - bTh, rz, armL, bTh, bTh, bR, bG, bB, bAlpha);
+                        renderBox(buf, pose, rx - armOffset, ryOff, rz, armL, bTh, bTh, bR, bG, bB, bAlpha);
+                    }
+                }
 
             } else if (renderType == 29) { // RENDER_GLASS_BLOCK
                 float glassAlpha = 0.4f;

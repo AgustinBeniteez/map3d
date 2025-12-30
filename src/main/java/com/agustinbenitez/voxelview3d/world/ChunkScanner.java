@@ -423,6 +423,13 @@ public class ChunkScanner {
                                     if (state.getValue(RedStoneWireBlock.SOUTH) != RedstoneSide.NONE) exposedFaces |= 2;
                                     if (state.getValue(RedStoneWireBlock.EAST) != RedstoneSide.NONE) exposedFaces |= 4;
                                     if (state.getValue(RedStoneWireBlock.WEST) != RedstoneSide.NONE) exposedFaces |= 8;
+                                } else if (state.getBlock().getDescriptionId().contains("glass_pane")) {
+                                    renderType = RENDER_GLASS_PANE;
+                                    exposedFaces = 0;
+                                    if (state.getValue(BlockStateProperties.NORTH)) exposedFaces |= 1;
+                                    if (state.getValue(BlockStateProperties.SOUTH)) exposedFaces |= 2;
+                                    if (state.getValue(BlockStateProperties.EAST)) exposedFaces |= 4;
+                                    if (state.getValue(BlockStateProperties.WEST)) exposedFaces |= 8;
                                 } else if (state.getBlock() instanceof IronBarsBlock) {
                                     renderType = RENDER_IRON_BARS;
                                     exposedFaces = 0;
@@ -495,13 +502,6 @@ public class ChunkScanner {
                                     
                                     // Pack Open: False(0), True(1)
                                     if (state.getValue(TrapDoorBlock.OPEN)) exposedFaces |= 8; // Bit 3
-                                } else if (state.getBlock().getDescriptionId().contains("glass_pane")) {
-                                    renderType = RENDER_GLASS_PANE;
-                                    exposedFaces = 0;
-                                    if (state.getValue(BlockStateProperties.NORTH)) exposedFaces |= 1;
-                                    if (state.getValue(BlockStateProperties.SOUTH)) exposedFaces |= 2;
-                                    if (state.getValue(BlockStateProperties.EAST)) exposedFaces |= 4;
-                                    if (state.getValue(BlockStateProperties.WEST)) exposedFaces |= 8;
                                 } else if (state.getBlock() instanceof AbstractGlassBlock) {
                                     renderType = RENDER_GLASS_BLOCK;
                                     // exposedFaces is already calculated based on transparency

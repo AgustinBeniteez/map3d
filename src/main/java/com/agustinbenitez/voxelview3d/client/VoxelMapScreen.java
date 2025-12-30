@@ -68,6 +68,7 @@ public class VoxelMapScreen extends Screen {
     private Button togglePerspective;
     private Button waypointsBtn;
     private Button closeModalBtn;
+    private Button closeMapBtn;
     
     // Settings Widgets
     private Button toggleCompassBtn;
@@ -173,6 +174,21 @@ public class VoxelMapScreen extends Screen {
             Component.translatable("voxelview3d.waypoints"),
             new ResourceLocation("voxelview3d", "textures/iconpoints.png"),
             b -> toggleModal()));
+        
+        // Close Map Button (Top Right)
+        closeMapBtn = addRenderableWidget(new Button(this.width - 25, 5, 20, 20, Component.literal("X"), b -> this.onClose(), Supplier::get) {
+             @Override
+             public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                 // Custom dark style
+                 int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
+                 int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
+                 int textColor = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
+                 
+                 guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                 guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
+                 guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
+             }
+        });
         
         // Modal Widgets (hidden by default)
         initModalWidgets();
@@ -394,7 +410,7 @@ public class VoxelMapScreen extends Screen {
             }));
         
         // Close Button (Small X in top right of the whole modal)
-        closeModalBtn = addRenderableWidget(Button.builder(Component.literal("X"), b -> {
+        closeModalBtn = addRenderableWidget(new Button(modalX + modalW - 25, modalY + 5, 20, 20, Component.literal("X"), b -> {
             if (isCreatingMode) {
                 isCreatingMode = false;
                 editingWaypoint = null;
@@ -403,7 +419,19 @@ public class VoxelMapScreen extends Screen {
                 showWaypointModal = false;
                 updateModalVisibility();
             }
-        }).bounds(modalX + modalW - 25, modalY + 5, 20, 20).build());
+        }, Supplier::get) {
+            @Override
+            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                // Custom dark style
+                int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
+                int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
+                int textColor = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
+                
+                guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
+                guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
+            }
+        });
         
         // --- Settings Modal Widgets ---
         int settingsW = 200;
@@ -423,7 +451,7 @@ public class VoxelMapScreen extends Screen {
         
         renderDistanceBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)), b -> {
             ClientSettings.renderDistance += 5;
-            if (ClientSettings.renderDistance > 15) ClientSettings.renderDistance = 5;
+            if (ClientSettings.renderDistance > 25) ClientSettings.renderDistance = 5;
             b.setMessage(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)));
         }).bounds(settingsX + 10, settingsY + 100, settingsW - 20, 20).build());
 
@@ -461,10 +489,22 @@ public class VoxelMapScreen extends Screen {
             }
         });
 
-        closeSettingsBtn = addRenderableWidget(Button.builder(Component.literal("X"), b -> {
+        closeSettingsBtn = addRenderableWidget(new Button(settingsX + settingsW - 25, settingsY + 10, 20, 20, Component.literal("X"), b -> {
             showSettingsModal = false;
             updateModalVisibility();
-        }).bounds(settingsX + settingsW - 25, settingsY + 10, 20, 20).build());
+        }, Supplier::get) {
+            @Override
+            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                // Custom dark style
+                int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
+                int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
+                int textColor = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
+                
+                guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
+                guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
+            }
+        });
     }
     
     private List<ClientSettings.Waypoint> getFilteredWaypoints() {
@@ -574,6 +614,7 @@ public class VoxelMapScreen extends Screen {
         if (toggleChunkGrid != null) toggleChunkGrid.visible = showBottom;
         if (togglePerspective != null) togglePerspective.visible = showBottom;
         if (waypointsBtn != null) waypointsBtn.visible = showBottom;
+        if (closeMapBtn != null) closeMapBtn.visible = showBottom;
     }
     
     private void createWaypoint() {
