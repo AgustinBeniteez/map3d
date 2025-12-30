@@ -220,9 +220,19 @@ public class VoxelMapScreen extends Screen {
         
         for (int i = 0; i < COLORS.length; i++) {
             final int color = COLORS[i];
-            Button btn = Button.builder(Component.literal(""), b -> {
+            Button btn = new Button(startX + (i * (colSize + 4)), startY, colSize, colSize, Component.empty(), b -> {
                 selectedColor = color;
-            }).bounds(startX + (i * (colSize + 4)), startY, colSize, colSize).build();
+            }, Supplier::get) {
+                @Override
+                public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                    // Custom dark style
+                    int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
+                    int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
+                    
+                    guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                    guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
+                }
+            };
             addRenderableWidget(btn);
             colorButtons.add(btn);
         }
@@ -237,9 +247,19 @@ public class VoxelMapScreen extends Screen {
         
         for (int i = 1; i <= 10; i++) {
             final String iconName = "icon" + i;
-            Button btn = Button.builder(Component.empty(), b -> {
+            Button btn = new Button(iconStartX + ((i - 1) * (iconSize + 2)), iconStartY, iconSize, iconSize, Component.empty(), b -> {
                 selectedIcon = iconName;
-            }).bounds(iconStartX + ((i - 1) * (iconSize + 2)), iconStartY, iconSize, iconSize).build();
+            }, Supplier::get) {
+                @Override
+                public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                    // Custom dark style
+                    int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
+                    int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
+                    
+                    guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                    guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
+                }
+            };
             addRenderableWidget(btn);
             iconButtons.add(btn);
         }
@@ -273,6 +293,7 @@ public class VoxelMapScreen extends Screen {
         // Total reserved = 20 + 5 + 20 + 5 = 50px
         int searchW = modalW - 20 - 50;
         searchField = new EditBox(this.font, modalX + 10, modalY + 35, searchW, 20, Component.translatable("voxelview3d.waypoint.search"));
+        searchField.setResponder(text -> scrollOffset = 0);
         addRenderableWidget(searchField);
         
         // Hide All Button
@@ -305,6 +326,8 @@ public class VoxelMapScreen extends Screen {
                 index = (index + 1) % dims.size();
                 currentDimensionFilter = dims.get(index);
             }
+            // Reset scroll when changing dimension
+            scrollOffset = 0;
         }, Supplier::get) {
             @Override
             public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
@@ -599,6 +622,10 @@ public class VoxelMapScreen extends Screen {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (KeyBindings.OPEN_MAP_KEY.matches(keyCode, scanCode)) {
+            // If user is typing in an input field, don't close the map
+            if (this.getFocused() instanceof EditBox) {
+                return super.keyPressed(keyCode, scanCode, modifiers);
+            }
             this.onClose();
             return true;
         }
