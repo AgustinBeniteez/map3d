@@ -95,7 +95,14 @@ public class VoxelMapRenderer {
             boolean canSeeSky = mc.level.canSeeSky(player.blockPosition());
             
             // Underground if can't see sky OR if deep in a hole (surface is significantly higher)
-            isUnderground = !canSeeSky && !isNether && !isEnd; // Treat Nether separately or as "always cave" but with lava floor
+            if (isEnd) {
+                // In The End, use Heightmap because canSeeSky is unreliable (no skylight)
+                // If there are blocks significantly above us, treat as underground/indoors
+                int h = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, player.getBlockX(), player.getBlockZ());
+                isUnderground = h > player.getBlockY() + 4;
+            } else {
+                isUnderground = !canSeeSky && !isNether; // Overworld logic
+            }
             
             if (!isUnderground && !isNether && !isEnd) {
                  int x = player.getBlockX();
@@ -298,9 +305,9 @@ public class VoxelMapRenderer {
             int h = relY + minBuildHeight;
             if (h < minY || h > maxY) continue;
             
-            double rx = (cp.x * 16 + x) + 0.5 - centerX;
+            double rx = (cp.x * 16 + x) - centerX;
             double ry = h - centerY;
-            double rz = (cp.z * 16 + z) + 0.5 - centerZ;
+            double rz = (cp.z * 16 + z) - centerZ;
             
             int color = colors[i];
             
@@ -995,7 +1002,11 @@ public class VoxelMapRenderer {
             // If exposedFaces is 0, it means it's old data format (where bits were 0).
             // So we default to ALL exposed to be safe (and ugly grid) or just assume Top?
             // Let's assume old data has Top exposed at least.
-            if (exposedFaces == 0) exposedFaces = 0x3F; // Default to all faces for old data
+            // BUT: We must exclude blocks that use exposedFaces for data packing where 0 is a valid value!
+            // 20: Button, 21: Lever, 61: Rail, 62: Repeater, 63: Comparator
+            if (exposedFaces == 0 && renderType != 20 && renderType != 21 && renderType != 61 && renderType != 62 && renderType != 63) {
+                exposedFaces = 0x3F; 
+            }
             
             int h = relY + minBuildHeight;
             
@@ -2270,20 +2281,17 @@ public class VoxelMapRenderer {
                 // 0:N-S, 1:E-W, 2:ASC_E, 3:ASC_W, 4:ASC_N, 5:ASC_S
                 // 6:SE, 7:SW, 8:NW, 9:NE
                 
-                if (shapeOrdinal == 0) { // NORTH-SOUTH
+                if (shapeOrdinal == 0 || shapeOrdinal == 1) { // NORTH-SOUTH or EAST-WEST
+                    // Use the logic of W-E (which rotates 90) but rotate it appropriately
+                    // If N-S (0), rotate 0 (or 180). If E-W (1), rotate 90.
+                    // The user requested to make N-S look like E-W but rotated, implying they should share the exact same drawing code.
+                    float rot = (shapeOrdinal == 1) ? 90.0f : 0.0f;
+                    model.rotate(Axis.YP.rotationDegrees(rot));
+
                     // Rails
                     renderBox(buf, model, -gauge/2, railH/2, 0, railW, railH, 1.0f, rR, rG, rB, alpha);
                     renderBox(buf, model, gauge/2, railH/2, 0, railW, railH, 1.0f, rR, rG, rB, alpha);
                     // Ties (3 per block)
-                    renderBox(buf, model, 0, tieH/2, 0, tieL, tieH, tieW, tR, tG, tB, alpha);
-                    renderBox(buf, model, 0, tieH/2, -0.35f, tieL, tieH, tieW, tR, tG, tB, alpha);
-                    renderBox(buf, model, 0, tieH/2, 0.35f, tieL, tieH, tieW, tR, tG, tB, alpha);
-                } else if (shapeOrdinal == 1) { // EAST-WEST
-                    model.rotate(Axis.YP.rotationDegrees(90));
-                    // Rails
-                    renderBox(buf, model, -gauge/2, railH/2, 0, railW, railH, 1.0f, rR, rG, rB, alpha);
-                    renderBox(buf, model, gauge/2, railH/2, 0, railW, railH, 1.0f, rR, rG, rB, alpha);
-                    // Ties
                     renderBox(buf, model, 0, tieH/2, 0, tieL, tieH, tieW, tR, tG, tB, alpha);
                     renderBox(buf, model, 0, tieH/2, -0.35f, tieL, tieH, tieW, tR, tG, tB, alpha);
                     renderBox(buf, model, 0, tieH/2, 0.35f, tieL, tieH, tieW, tR, tG, tB, alpha);

@@ -347,14 +347,12 @@ public class ChunkScanner {
                                     boolean isRedstoneRail = false;
                                     boolean isPowered = false;
                                     
-                                    // Check for properties
-                                    // PoweredRailBlock, DetectorRailBlock, ActivatorRailBlock all have POWERED property?
-                                    // DetectorRailBlock has POWERED.
-                                    // PoweredRailBlock has POWERED.
-                                    // ActivatorRailBlock has POWERED.
-                                    // RailBlock (plain) does NOT have POWERED.
-                                    
-                                    if (state.hasProperty(BlockStateProperties.POWERED)) {
+                                    // Only check for power on rails that support it to avoid false positives on normal rails
+                                    if ((state.getBlock() == Blocks.POWERED_RAIL || 
+                                         state.getBlock() == Blocks.DETECTOR_RAIL || 
+                                         state.getBlock() == Blocks.ACTIVATOR_RAIL) &&
+                                        state.hasProperty(BlockStateProperties.POWERED)) {
+                                        
                                         isRedstoneRail = true;
                                         if (state.getValue(BlockStateProperties.POWERED)) {
                                             isPowered = true;
