@@ -30,5 +30,9 @@
   "voxelview3d.zoom": "Zoom: %.1f",
   "voxelview3d.coords": "X: %d Y: %d Z: %d",
   "voxelview3d.biome.unknown": "Unknown Biome",
-  "voxelview3d.unknown": "Unknown"
+  "voxelview3d.unknown": "Unknown",
+  "voxelview3d.chat.share_text": "[Waypoint: %s]",
+  "voxelview3d.chat.share_hover": "Click to paste command (Then Enter to save)",
+  "voxelview3d.chat.waypoint_added": "Waypoint '%s' added!",
+  "voxelview3d.chat.waypoint_exists": "Waypoint '%s' already exists."
 }

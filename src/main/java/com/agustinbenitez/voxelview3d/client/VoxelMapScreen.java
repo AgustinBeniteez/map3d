@@ -463,6 +463,17 @@ public class VoxelMapScreen extends Screen {
                 filtered.add(wp);
             }
         }
+        
+        // Sort by distance
+        if (minecraft.player != null) {
+            Player p = minecraft.player;
+            filtered.sort((w1, w2) -> {
+                double d1 = p.distanceToSqr(w1.x + 0.5, w1.y + 0.5, w1.z + 0.5);
+                double d2 = p.distanceToSqr(w2.x + 0.5, w2.y + 0.5, w2.z + 0.5);
+                return Double.compare(d1, d2);
+            });
+        }
+        
         return filtered;
     }
 
@@ -696,6 +707,14 @@ public class VoxelMapScreen extends Screen {
                  // TP: Right - 60
                  // Visible: Right - 90
                  // Edit: Right - 120
+                 // Share: Right - 150
+                 
+                 if (mouseX >= rightEdge - 150 && mouseX < rightEdge - 130) {
+                     // Share
+                     String msg = WaypointSharingHandler.createShareMessage(wp);
+                     this.minecraft.setScreen(new net.minecraft.client.gui.screens.ChatScreen(msg));
+                     return true;
+                 }
                  
                  if (mouseX >= rightEdge - 120 && mouseX < rightEdge - 100) {
                      // Edit
@@ -985,7 +1004,16 @@ public class VoxelMapScreen extends Screen {
             
             // Draw Icon
             ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + iconName + ".png");
+            
+            float r = ((selectedColor >> 16) & 0xFF) / 255.0f;
+            float g = ((selectedColor >> 8) & 0xFF) / 255.0f;
+            float b = (selectedColor & 0xFF) / 255.0f;
+            
+            RenderSystem.enableBlend();
+            RenderSystem.setShaderColor(r, g, b, 1.0F);
             guiGraphics.blit(iconLoc, btn.getX() + 2, btn.getY() + 2, 0, 0, 16, 16, 16, 16);
+            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+            RenderSystem.disableBlend();
             
             if (selectedIcon.equals(iconName)) {
                 guiGraphics.renderOutline(btn.getX(), btn.getY(), btn.getWidth(), btn.getHeight(), 0xFFFFFFFF);
@@ -1080,12 +1108,26 @@ public class VoxelMapScreen extends Screen {
                  
                  // Icon
                  ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+                 
+                 float r = ((wp.color >> 16) & 0xFF) / 255.0f;
+                 float g = ((wp.color >> 8) & 0xFF) / 255.0f;
+                 float b = (wp.color & 0xFF) / 255.0f;
+                 
                  RenderSystem.enableBlend();
+                 RenderSystem.setShaderColor(r, g, b, 1.0F);
                  guiGraphics.blit(iconLoc, listX + 5, rowY + 5, 0, 0, 20, 20, 20, 20);
+                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
                  RenderSystem.disableBlend();
                  
                  // Name
-                 guiGraphics.drawString(this.font, wp.name, listX + 35, rowY + 11, wp.color);
+                 guiGraphics.drawString(this.font, wp.name, listX + 35, rowY + 5, wp.color);
+                 
+                 // Distance
+                 if (this.minecraft.player != null) {
+                     double d = Math.sqrt(this.minecraft.player.distanceToSqr(wp.x + 0.5, wp.y + 0.5, wp.z + 0.5));
+                     String distStr = String.format("%.1fm", d);
+                     guiGraphics.drawString(this.font, distStr, listX + 35, rowY + 15, 0xFF888888);
+                 }
                  
                  // Buttons: [Edit] [Eye] [TP] [Trash] (Aligned Right)
                  int rightEdge = listX + listWidth;
@@ -1093,7 +1135,16 @@ public class VoxelMapScreen extends Screen {
                  // Coords (Before buttons)
                  String coords = String.format("[%d, %d, %d]", wp.x, wp.y, wp.z);
                  int coordsW = this.font.width(coords);
-                 guiGraphics.drawString(this.font, coords, rightEdge - 140 - coordsW, rowY + 11, 0xFFAAAAAA);
+                 guiGraphics.drawString(this.font, coords, rightEdge - 170 - coordsW, rowY + 11, 0xFFAAAAAA);
+                 
+                 // Share
+                 boolean shareHover = mouseX >= rightEdge - 150 && mouseX < rightEdge - 130 && mouseY >= rowY && mouseY < rowY + itemHeight;
+                 guiGraphics.fill(rightEdge - 150, rowY + 5, rightEdge - 130, rowY + 25, shareHover ? 0xFF606060 : 0xFF404040);
+                 ResourceLocation shareIcon = new ResourceLocation("voxelview3d", "textures/share.png");
+                 RenderSystem.setShaderTexture(0, shareIcon);
+                 RenderSystem.enableBlend();
+                 guiGraphics.blit(shareIcon, rightEdge - 148, rowY + 7, 0, 0, 16, 16, 16, 16);
+                 RenderSystem.disableBlend();
                  
                  // Edit
                  boolean editHover = mouseX >= rightEdge - 120 && mouseX < rightEdge - 100 && mouseY >= rowY && mouseY < rowY + itemHeight;

@@ -412,52 +412,6 @@ public class ChunkScanner {
                                     // Mode (Compare=0, Subtract=1)
                                     if (state.getValue(ComparatorBlock.MODE) == ComparatorMode.SUBTRACT) exposedFaces |= 8; // Bit 3
 
-                                } else if (state.getBlock() instanceof PistonBaseBlock) {
-                                    renderType = RENDER_PISTON;
-                                    exposedFaces = 0;
-                                    
-                                    // Facing: D(0), U(1), N(2), S(3), W(4), E(5)
-                                    int facing = 0;
-                                    switch(state.getValue(BlockStateProperties.FACING)) {
-                                        case DOWN: facing = 0; break;
-                                        case UP: facing = 1; break;
-                                        case NORTH: facing = 2; break;
-                                        case SOUTH: facing = 3; break;
-                                        case WEST: facing = 4; break;
-                                        case EAST: facing = 5; break;
-                                    }
-                                    exposedFaces |= (facing & 7); // Bits 0-2
-                                    
-                                    // Sticky
-                                    if (state.getBlock() == Blocks.STICKY_PISTON) exposedFaces |= 8; // Bit 3
-                                    
-                                    // IsHead = 0 (Base)
-                                    
-                                    // Extended
-                                    if (state.getValue(BlockStateProperties.EXTENDED)) exposedFaces |= 32; // Bit 5
-
-                                } else if (state.getBlock() instanceof PistonHeadBlock) {
-                                    renderType = RENDER_PISTON;
-                                    exposedFaces = 0;
-                                    
-                                    // Facing
-                                    int facing = 0;
-                                    switch(state.getValue(BlockStateProperties.FACING)) {
-                                        case DOWN: facing = 0; break;
-                                        case UP: facing = 1; break;
-                                        case NORTH: facing = 2; break;
-                                        case SOUTH: facing = 3; break;
-                                        case WEST: facing = 4; break;
-                                        case EAST: facing = 5; break;
-                                    }
-                                    exposedFaces |= (facing & 7); // Bits 0-2
-                                    
-                                    // Sticky
-                                    if (state.getValue(BlockStateProperties.PISTON_TYPE) == PistonType.STICKY) exposedFaces |= 8; // Bit 3
-                                    
-                                    // IsHead = 1
-                                    exposedFaces |= 16; // Bit 4
-
                                 } else if (state.getBlock() instanceof RedStoneWireBlock) {
                                     renderType = RENDER_REDSTONE_WIRE;
                                     exposedFaces = 0;

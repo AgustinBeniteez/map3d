@@ -40,5 +40,9 @@
   "key.categories.voxelview3d": "VoxelView 3D",
   "key.voxelview3d.open_map": "Abrir Mapa",
   "key.voxelview3d.open_waypoints_list": "Abrir Lista Waypoints",
-  "key.voxelview3d.create_waypoint": "Crear Waypoint Rápido"
+  "key.voxelview3d.create_waypoint": "Crear Waypoint Rápido",
+  "voxelview3d.chat.share_text": "[Waypoint: %s]",
+  "voxelview3d.chat.share_hover": "Click para pegar comando (Luego Enter para guardar)",
+  "voxelview3d.chat.waypoint_added": "Waypoint '%s' añadido!",
+  "voxelview3d.chat.waypoint_exists": "El Waypoint '%s' ya existe."
 }

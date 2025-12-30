@@ -820,6 +820,12 @@ public class VoxelMapRenderer {
                 RenderSystem.setShader(GameRenderer::getPositionTexShader);
                 RenderSystem.setShaderTexture(0, iconLoc);
                 
+                // Tint Icon with Waypoint Color
+                float r = ((wp.color >> 16) & 0xFF) / 255.0f;
+                float g = ((wp.color >> 8) & 0xFF) / 255.0f;
+                float b = (wp.color & 0xFF) / 255.0f;
+                RenderSystem.setShaderColor(r, g, b, 1.0F);
+                
                 // Draw Icon Quad
                 float iconSize = 16.0f; // Size in local scaled units
                 float iconY = -2.0f; // Slightly above text
@@ -836,8 +842,11 @@ public class VoxelMapRenderer {
                 bufIcon.vertex(matrix, iconSize/2, iconY - iconSize, 0).uv(1, 0).endVertex();
                 
                 BufferUploader.drawWithShader(bufIcon.end());
+                
+                // Reset Shader Color
+                RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
                 // -----------------
-
+                
                 int textWidth = Minecraft.getInstance().font.width(wp.name);
                 int halfWidth = textWidth / 2;
                 
@@ -2431,96 +2440,6 @@ public class VoxelMapRenderer {
                 float frontY = 0.125f + (frontH/2.0f);
                 
                 renderBox(buf, model, 0, frontY, -0.3125f, 0.125f, frontH, 0.125f, tR, tG, tB, alpha);
-
-            } else if (renderType == 64) { // RENDER_PISTON
-                int facing = exposedFaces & 7; // 0-5
-                boolean sticky = (exposedFaces & 8) != 0;
-                boolean isHead = (exposedFaces & 16) != 0;
-                boolean extended = (exposedFaces & 32) != 0;
-                
-                // Colors
-                // Stone Body (Cobble)
-                float bodyR = 0.5f * brightness;
-                float bodyG = 0.5f * brightness;
-                float bodyB = 0.5f * brightness;
-                
-                // Wood Face
-                float woodR = 0.6f * brightness;
-                float woodG = 0.5f * brightness;
-                float woodB = 0.3f * brightness;
-                
-                // Slime Face
-                float slimeR = 0.4f * brightness;
-                float slimeG = 0.7f * brightness;
-                float slimeB = 0.4f * brightness;
-                
-                // Setup Rotation
-                Matrix4f model = new Matrix4f(pose);
-                model.translate((float)rx, (float)ryOff, (float)rz);
-                
-                // Default is facing UP (Y+)
-                // Rotate to match facing
-                // 0:D, 1:U, 2:N, 3:S, 4:W, 5:E
-                if (facing == 0) { // Down
-                    model.rotate(Axis.XP.rotationDegrees(180));
-                } else if (facing == 1) { // Up
-                    // No rotation
-                } else if (facing == 2) { // North (-Z)
-                    model.rotate(Axis.XP.rotationDegrees(90));
-                } else if (facing == 3) { // South (+Z)
-                    model.rotate(Axis.XP.rotationDegrees(-90));
-                } else if (facing == 4) { // West (-X)
-                    model.rotate(Axis.ZP.rotationDegrees(90));
-                } else if (facing == 5) { // East (+X)
-                    model.rotate(Axis.ZP.rotationDegrees(-90));
-                }
-                
-                if (!isHead) {
-                    // BASE BLOCK
-                    if (extended) {
-                        // Render Base without top face
-                        // Bottom (0 to 0.25)
-                        renderBox(buf, model, 0, 0.125f, 0, 1.0f, 0.25f, 1.0f, bodyR, bodyG, bodyB, alpha);
-                        // Sides (Walls) - Hollow center?
-                        // Just render full block minus top 0.25
-                        renderBox(buf, model, 0, 0.5f, 0, 1.0f, 0.5f, 1.0f, bodyR, bodyG, bodyB, alpha);
-                        // Inner Rod (Piston Neck)
-                        renderBox(buf, model, 0, 0.75f, 0, 0.25f, 0.5f, 0.25f, bodyR, bodyG, bodyB, alpha);
-                    } else {
-                        // Retracted: Full Block
-                        // Body
-                        renderBox(buf, model, 0, 0.375f, 0, 1.0f, 0.75f, 1.0f, bodyR, bodyG, bodyB, alpha);
-                        // Face (Top)
-                        float fR = sticky ? slimeR : woodR;
-                        float fG = sticky ? slimeG : woodG;
-                        float fB = sticky ? slimeB : woodB;
-                        renderBox(buf, model, 0, 0.875f, 0, 1.0f, 0.25f, 1.0f, fR, fG, fB, alpha);
-                    }
-                } else {
-                    // PISTON HEAD (Extended Part)
-                    // The "Head" is usually 1 block away from base in the facing direction.
-                    // But here we are rendering the block at the HEAD position.
-                    // So we render the flat face and the stick going BACK.
-                    
-                    // Face (Top plate)
-                    float fR = sticky ? slimeR : woodR;
-                    float fG = sticky ? slimeG : woodG;
-                    float fB = sticky ? slimeB : woodB;
-                    
-                    // Plate is at the "Top" of this block space (relative to rotation)
-                    // Actually, Piston Head occupies the block space.
-                    // The face is at the "front" of this block.
-                    // If Facing UP, Face is at Y=0.75 to 1.0?
-                    // Standard Piston Head thickness is 4 pixels (0.25).
-                    
-                    // Plate
-                    renderBox(buf, model, 0, 0.875f, 0, 1.0f, 0.25f, 1.0f, fR, fG, fB, alpha);
-                    
-                    // Stick (Neck) - Goes down
-                    // Length: It connects to the base. Base is at Y-1.
-                    // So stick goes from 0.75 down to -0.25?
-                    renderBox(buf, model, 0, 0.25f, 0, 0.25f, 1.0f, 0.25f, bodyR, bodyG, bodyB, alpha);
-                }
 
             } else {
                 // Render block as a box (1.0 size for solid terrain)

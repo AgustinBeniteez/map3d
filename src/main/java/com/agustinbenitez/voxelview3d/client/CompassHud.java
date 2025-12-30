@@ -154,7 +154,7 @@ public class CompassHud implements IGuiOverlay {
             if (group.size() == 1) {
                 // Render single
                 VisibleWaypoint vwp = group.get(0);
-                drawWaypointMarker(guiGraphics, vwp.x, topY, vwp.wp, false, true);
+                drawWaypointMarker(guiGraphics, vwp.x, topY, vwp.wp, false);
             } else {
                 // Render stacked
                 // Draw from last to first (back to front)? 
@@ -171,9 +171,6 @@ public class CompassHud implements IGuiOverlay {
                     // But visually, the "top" of the stack should be the last one drawn.
                     // Let's make the last item in the group the "top" one.
                     
-                    int stackIndex = i; // 0 is bottom, size-1 is top
-                    boolean isTop = (i == group.size() - 1);
-                    
                     // Offset: shift up for items behind?
                     // Let's shift the items behind UPwards (-y)
                     // Top item (last) is at y. Item before is at y - 3.
@@ -182,7 +179,7 @@ public class CompassHud implements IGuiOverlay {
                     int reverseIndex = group.size() - 1 - i;
                     int yOffset = reverseIndex * -3; 
                     
-                    drawWaypointMarker(guiGraphics, avgX, topY + yOffset, group.get(i).wp, true, isTop);
+                    drawWaypointMarker(guiGraphics, avgX, topY + yOffset, group.get(i).wp, true);
                 }
             }
         }
@@ -215,7 +212,7 @@ public class CompassHud implements IGuiOverlay {
         }
     }
     
-    private void drawWaypointMarker(GuiGraphics guiGraphics, int x, int topY, ClientSettings.Waypoint wp, boolean isStacked, boolean isTop) {
+    private void drawWaypointMarker(GuiGraphics guiGraphics, int x, int topY, ClientSettings.Waypoint wp, boolean isStacked) {
         int y = topY + 1; // Slightly higher
         
         // Draw Icon instead of colored rect
@@ -228,45 +225,13 @@ public class CompassHud implements IGuiOverlay {
         // If stacked, we might want to shift it visually or just use the y offset provided in the loop
         // The y passed here already includes the stack offset.
         
+        float r = ((wp.color >> 16) & 0xFF) / 255.0f;
+        float g = ((wp.color >> 8) & 0xFF) / 255.0f;
+        float b = (wp.color & 0xFF) / 255.0f;
+        
+        RenderSystem.setShaderColor(r, g, b, 1.0F);
         guiGraphics.blit(iconLoc, x - iconSize/2, y, iconSize, iconSize, 0, 0, 16, 16, 16, 16);
-        
-        // Draw text BELOW the marker (only if not stacked, or only for the top one?)
-        // If stacked, maybe only show text for the top one? Or none?
-        // User didn't specify, but text for all would be messy.
-        // Let's show text only if !isStacked. Or if it's the top of the stack?
-        // But the method doesn't know if it's the top. 
-        // Actually, the loop logic: stackIndex is passed. But we don't know total size here easily.
-        // Let's just assume if isStacked, we skip text to avoid clutter, or draw it very small?
-        // "apilados" -> usually implies only top one is fully interactable/visible details.
-        // Let's hide text for stacked items to keep it clean, unless user complains.
-        // Wait, if I have 2 important waypoints, I want to see both names?
-        // But they overlap.
-        // Let's just draw text for all but with the same y offset logic so they stack too?
-        // If I draw text for all, it will be unreadable.
-        // Let's only draw text for the *front-most* item?
-        // In the loop, I draw from back to front.
-        // So the last one drawn (front) will be on top.
-        // But if I draw text for back ones, the front icon will cover it? No, text is below icon.
-        // Text will stack messy.
-        // Let's disable text for stacked items for now, except maybe the top one?
-        // Implementation: Pass `isTop` boolean?
-        // I'll stick to: if stacked, no text. Simpler and cleaner. 
-        // Or better: Show text only if NOT stacked.
-        
-        if (!isStacked || isTop) {
-            PoseStack pose = guiGraphics.pose();
-            pose.pushPose();
-            float scale = 0.5f;
-            // Move text down (y + 12) to be below icon (icon is 10px)
-            // Adjust for smaller icon if stacked
-            pose.translate(x, y + (isStacked ? 9 : 12), 0);
-            pose.scale(scale, scale, 1.0f);
-            
-            int textWidth = Minecraft.getInstance().font.width(wp.name);
-            guiGraphics.drawString(Minecraft.getInstance().font, wp.name, -textWidth / 2, 0, 0xFFFFFFFF, false);
-            
-            pose.popPose();
-        }
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
     }
     
     private static class VisibleWaypoint {
