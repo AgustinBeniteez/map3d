@@ -824,6 +824,13 @@ public class ChunkScanner {
              }
         }
         
+        // Leaves Logic: If both are leaves, treat as occluded (merge them)
+        // Check if both blocks are leaves (tag check or instance check)
+        if (selfState.getBlock() instanceof net.minecraft.world.level.block.LeavesBlock && 
+            neighborState.getBlock() instanceof net.minecraft.world.level.block.LeavesBlock) {
+            return false;
+        }
+        
         return !neighborState.canOcclude();
     }
     

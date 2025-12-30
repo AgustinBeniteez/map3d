@@ -943,13 +943,15 @@ public class VoxelMapScreen extends Screen {
         int cy = 40;
         float radius = 20.0f;
         
+        float effectivePitch = ClientSettings.isTopDownView ? 90.0f : cameraPitch;
+        
         PoseStack poseStack = guiGraphics.pose();
         poseStack.pushPose();
         poseStack.translate(cx, cy, 0);
         
         // Scale and Rotate (Flip Y for screen coords)
         poseStack.scale(radius, -radius, radius); 
-        poseStack.mulPose(Axis.XP.rotationDegrees(cameraPitch));
+        poseStack.mulPose(Axis.XP.rotationDegrees(effectivePitch));
         poseStack.mulPose(Axis.YP.rotationDegrees(cameraYaw));
         
         // Draw Axis Lines
@@ -984,18 +986,18 @@ public class VoxelMapScreen extends Screen {
         
         // Draw labels N, S, E, W
         // N (-Z), S (+Z), E (+X), W (-X)
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 0, 0, -1, "N", 0xFFFF0000);
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 0, 0, 1, "S", 0xFFAAAAAA);
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 1, 0, 0, "E", 0xFF0000FF);
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, -1, 0, 0, "W", 0xFFAAAAAA);
+        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 0, 0, -1, "N", 0xFFFF0000, effectivePitch);
+        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 0, 0, 1, "S", 0xFFAAAAAA, effectivePitch);
+        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 1, 0, 0, "E", 0xFF0000FF, effectivePitch);
+        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, -1, 0, 0, "W", 0xFFAAAAAA, effectivePitch);
     }
 
-    private void drawCompassLabel(GuiGraphics guiGraphics, int cx, int cy, float radius, float x, float y, float z, String text, int color) {
+    private void drawCompassLabel(GuiGraphics guiGraphics, int cx, int cy, float radius, float x, float y, float z, String text, int color, float pitch) {
         Vector3f v = new Vector3f(x, y, z);
         
         // Apply rotations in order: Yaw then Pitch
         v.rotateY((float)Math.toRadians(cameraYaw));
-        v.rotateX((float)Math.toRadians(cameraPitch));
+        v.rotateX((float)Math.toRadians(pitch));
         
         // Project to screen
         // Screen X = v.x

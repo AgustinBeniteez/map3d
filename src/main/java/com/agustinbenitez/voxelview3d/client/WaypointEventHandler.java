@@ -45,6 +45,7 @@ public class WaypointEventHandler {
                 int x = mc.player.getBlockX();
                 int y = mc.player.getBlockY();
                 int z = mc.player.getBlockZ();
+                String dimension = mc.player.level().dimension().location().toString();
                 
                 String lastDeathName = Component.translatable("voxelview3d.waypoint.last_death").getString();
                 
@@ -53,7 +54,7 @@ public class WaypointEventHandler {
                 for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
                     if (wp.name.equals(lastDeathName)) {
                         // If location matches, assume it's the same death event (e.g. relogin)
-                        if (wp.x == x && wp.y == y && wp.z == z) {
+                        if (wp.x == x && wp.y == y && wp.z == z && wp.getDimension().equals(dimension)) {
                             alreadyExistsAtLocation = true;
                             break;
                         }
@@ -68,7 +69,7 @@ public class WaypointEventHandler {
                 if (!alreadyExistsAtLocation) {
                     // Create new "Last Death" waypoint (Gray color: 0x555555)
                     // Icon "dead" maps to dead.png
-                    ClientSettings.waypoints.add(new ClientSettings.Waypoint(lastDeathName, x, y, z, 0x555555, "dead")); 
+                    ClientSettings.waypoints.add(new ClientSettings.Waypoint(lastDeathName, x, y, z, 0x555555, "dead", dimension)); 
                     WaypointManager.saveWaypoints();
                     
                     mc.player.displayClientMessage(Component.translatable("voxelview3d.waypoint.death_created", x, y, z), false);
