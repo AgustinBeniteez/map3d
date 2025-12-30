@@ -46,6 +46,9 @@ public class WorldWaypointRenderer {
         Map<String, List<ClientSettings.Waypoint>> groupedWaypoints = new HashMap<>();
         for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
             if (!wp.visible) continue;
+            // Only render waypoints in the current dimension
+            if (mc.player.level() != null && !wp.getDimension().equals(mc.player.level().dimension().location().toString())) continue;
+            
             String key = wp.x + "," + wp.z;
             groupedWaypoints.computeIfAbsent(key, k -> new ArrayList<>()).add(wp);
         }

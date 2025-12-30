@@ -105,6 +105,9 @@ public class CompassHud implements IGuiOverlay {
         for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
             if (!wp.visible) continue;
             
+            // Only render waypoints in the current dimension
+            if (mc.level != null && !wp.getDimension().equals(mc.level.dimension().location().toString())) continue;
+            
             double dx = wp.x - player.getX();
             double dz = wp.z - player.getZ();
             

@@ -47,10 +47,13 @@ public class VoxelMapScreen extends Screen {
     private Button createWaypointBtn;
     private Button openCreateModeBtn; // Button in List mode to open Create mode
     private Button deleteAllBtn;
+    private Button dimensionFilterBtn; // Filter waypoints by dimension
+    private Button hideAllBtn; // Hide all waypoints in dimension
     // private Button cancelCreateBtn; // Removed, merged into X button
     
     private int selectedColor = 0xFFFF00; // Default Yellow
     private String selectedIcon = "icon1"; // Default Icon
+    private String currentDimensionFilter = "minecraft:overworld"; // Default dimension filter
     private final int[] COLORS = {0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0x00FFFF, 0xFF00FF, 0xFFFFFF, 0xFFA500};
     private final List<Button> colorButtons = new ArrayList<>();
     private final List<Button> iconButtons = new ArrayList<>();
@@ -87,6 +90,12 @@ public class VoxelMapScreen extends Screen {
         super(Component.translatable("voxelview3d.title"));
         this.showWaypointModal = openWaypoints;
         this.isCreatingMode = createMode;
+        
+        // Auto-select current dimension when opening the screen
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level != null) {
+            this.currentDimensionFilter = mc.level.dimension().location().toString();
+        }
     }
     
     @Override
@@ -241,15 +250,102 @@ public class VoxelMapScreen extends Screen {
         int desiredButtonY = modalY + modalH - 30;
         int finalButtonY = Math.max(minButtonY, desiredButtonY);
         
-        createWaypointBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.waypoint.save"), b -> {
+        createWaypointBtn = addRenderableWidget(new Button(centerX - 100, finalButtonY, 200, 20, Component.translatable("voxelview3d.waypoint.save"), b -> {
             createWaypoint();
-        }).bounds(centerX - 100, finalButtonY, 200, 20).build());
+        }, Supplier::get) {
+             @Override
+             public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                 // Custom dark style
+                 int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
+                 int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
+                 int textColor = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
+                 
+                 guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                 guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
+                 guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
+             }
+        });
         
         // --- List Mode Widgets ---
         
         // Search Field
-        searchField = new EditBox(this.font, modalX + 10, modalY + 35, modalW - 20, 20, Component.translatable("voxelview3d.waypoint.search"));
+        // Reduced width to fit dimension button (20px) and hideAll button (20px) + gaps (5px each)
+        // Total reserved = 20 + 5 + 20 + 5 = 50px
+        int searchW = modalW - 20 - 50;
+        searchField = new EditBox(this.font, modalX + 10, modalY + 35, searchW, 20, Component.translatable("voxelview3d.waypoint.search"));
         addRenderableWidget(searchField);
+        
+        // Hide All Button
+        hideAllBtn = addRenderableWidget(new ImageToggleButton(modalX + 10 + searchW + 5, modalY + 35, 20, 20,
+            new ResourceLocation("voxelview3d", "textures/hideall.png"), // On (All Hidden)
+            new ResourceLocation("voxelview3d", "textures/nothideall.png"), // Off (Visible/Mixed)
+            () -> areAllHidden(currentDimensionFilter),
+            b -> {
+                boolean allHidden = areAllHidden(currentDimensionFilter);
+                boolean newState = allHidden; // If hidden (true), set to visible (true). If visible (false), set to hidden (false).
+                // Wait, if allHidden is true (hidden), clicking means "Show All" -> visible = true. Correct.
+                // If allHidden is false (visible), clicking means "Hide All" -> visible = false. Correct.
+                
+                for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
+                    if (wp.getDimension().equals(currentDimensionFilter)) {
+                        wp.visible = newState;
+                    }
+                }
+            }));
+        
+        // Dimension Filter Button
+        dimensionFilterBtn = addRenderableWidget(new Button(modalX + 10 + searchW + 5 + 20 + 5, modalY + 35, 20, 20, Component.empty(), b -> {
+            // Cycle Dimensions: Overworld -> Nether -> End -> Overworld
+            List<String> dims = getAvailableDimensions();
+            if (dims.isEmpty()) {
+                currentDimensionFilter = "minecraft:overworld";
+            } else {
+                int index = dims.indexOf(currentDimensionFilter);
+                if (index == -1) index = 0;
+                index = (index + 1) % dims.size();
+                currentDimensionFilter = dims.get(index);
+            }
+        }, Supplier::get) {
+            @Override
+            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                // Draw Background
+                super.renderWidget(guiGraphics, mouseX, mouseY, partialTick);
+                
+                // Draw Icon based on dimension
+                ResourceLocation texture = getDimensionIcon(currentDimensionFilter);
+                
+                RenderSystem.setShaderTexture(0, texture);
+                // Draw 16x16 icon centered in 20x20 button
+                guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, 16, 16, 16, 16);
+                
+                // Check for duplicates of same type
+                List<String> dims = getAvailableDimensions();
+                List<String> sameTypeDims = new ArrayList<>();
+                ResourceLocation myIcon = getDimensionIcon(currentDimensionFilter);
+                
+                for (String d : dims) {
+                    if (getDimensionIcon(d).equals(myIcon)) {
+                        sameTypeDims.add(d);
+                    }
+                }
+                
+                if (sameTypeDims.size() > 1) {
+                    int idx = sameTypeDims.indexOf(currentDimensionFilter);
+                    if (idx >= 0) {
+                        String num = String.valueOf(idx + 1);
+                        PoseStack poseStack = guiGraphics.pose();
+                        poseStack.pushPose();
+                        // Position in bottom right corner
+                        // Button is 20x20. Text is small.
+                        // Translate to x+14, y+12
+                        poseStack.translate(getX() + 12, getY() + 12, 200); 
+                        poseStack.scale(0.7f, 0.7f, 1f);
+                        guiGraphics.drawString(font, num, 0, 0, 0xFFFFFF, true);
+                        poseStack.popPose();
+                    }
+                }
+            }
+        });
 
         // Open Create Mode Button (in List Mode)
         openCreateModeBtn = addRenderableWidget(new IconTextButton(centerX - 100, modalY + modalH - 40, 200, 20, 
@@ -258,6 +354,11 @@ public class VoxelMapScreen extends Screen {
             b -> {
                 isCreatingMode = true;
                 editingWaypoint = null;
+                
+                // Do NOT auto-switch filter. Keep current filter so user can create waypoints in other dimensions.
+                // If user is in Nether tab, create waypoint in Nether.
+                // The actual dimension string is picked up in createWaypoint() from currentDimensionFilter.
+                
                 // Pre-fill coordinates when entering create mode
                 if (minecraft.player != null) {
                     wpX.setValue(String.valueOf(minecraft.player.getBlockX()));
@@ -344,13 +445,21 @@ public class VoxelMapScreen extends Screen {
     }
     
     private List<ClientSettings.Waypoint> getFilteredWaypoints() {
-        if (searchField == null || searchField.getValue().isEmpty()) {
+        if (searchField == null) {
             return ClientSettings.waypoints;
         }
+        
         String term = searchField.getValue().toLowerCase();
         List<ClientSettings.Waypoint> filtered = new ArrayList<>();
+        
         for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
-            if (wp.name.toLowerCase().contains(term)) {
+            // Filter by Dimension
+            if (!wp.getDimension().equals(currentDimensionFilter)) {
+                continue;
+            }
+            
+            // Filter by Search Term
+            if (term.isEmpty() || wp.name.toLowerCase().contains(term)) {
                 filtered.add(wp);
             }
         }
@@ -406,6 +515,8 @@ public class VoxelMapScreen extends Screen {
         // List Mode Widgets
         boolean showList = showWaypointModal && !isCreatingMode;
         if (searchField != null) searchField.visible = showList;
+        if (dimensionFilterBtn != null) dimensionFilterBtn.visible = showList;
+        if (hideAllBtn != null) hideAllBtn.visible = showList;
         if (openCreateModeBtn != null) openCreateModeBtn.visible = showList;
         // if (deleteAllBtn != null) deleteAllBtn.visible = showList; // Removed from here
         
@@ -447,9 +558,17 @@ public class VoxelMapScreen extends Screen {
                     editingWaypoint.z = z;
                     editingWaypoint.color = selectedColor;
                     editingWaypoint.iconName = selectedIcon;
+                    // Keep existing dimension or update? Let's keep existing to avoid moving it accidentally
                 } else {
                     // Create new
-                    ClientSettings.waypoints.add(new ClientSettings.Waypoint(name, x, y, z, selectedColor, selectedIcon));
+                    // Use current dimension filter if creating from list, or player dimension if creating via keybind
+                    // But keybind sets currentDimensionFilter to player dimension anyway.
+                    // So we can just use currentDimensionFilter.
+                    
+                    // Actually, if we are in Nether list and create, we want it to be Nether.
+                    String dim = currentDimensionFilter;
+                    
+                    ClientSettings.waypoints.add(new ClientSettings.Waypoint(name, x, y, z, selectedColor, selectedIcon, dim));
                 }
                 
                 // Save Waypoints
@@ -478,6 +597,11 @@ public class VoxelMapScreen extends Screen {
             isCreatingMode = true;
             showSettingsModal = false; // Ensure settings are closed
             editingWaypoint = null;
+            
+            // Auto-switch filter to current dimension so the new waypoint will be visible after creation
+            if (minecraft.level != null) {
+                currentDimensionFilter = minecraft.level.dimension().location().toString();
+            }
             
             // Pre-fill coordinates
             if (minecraft.player != null) {
@@ -601,6 +725,7 @@ public class VoxelMapScreen extends Screen {
                      // TP
                      if (minecraft.player != null) {
                          minecraft.player.connection.sendCommand("tp " + wp.x + " " + wp.y + " " + wp.z);
+                         this.onClose(); // Close the map after TP
                      }
                      return true;
                  }
@@ -1179,5 +1304,66 @@ public class VoxelMapScreen extends Screen {
             // Draw Text
             guiGraphics.drawString(font, getMessage(), contentX + iconWidth + gap, textY, color);
         }
+    }
+    
+    private boolean areAllHidden(String dimension) {
+        boolean hasWaypoints = false;
+        for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
+            if (wp.getDimension().equals(dimension)) {
+                hasWaypoints = true;
+                if (wp.visible) return false;
+            }
+        }
+        // If no waypoints, treat as "All Hidden" (so button shows hidden icon)? 
+        // Or false?
+        // If hasWaypoints is false, return true (default state).
+        return true;
+    }
+    
+    private List<String> getAvailableDimensions() {
+        List<String> dims = new ArrayList<>();
+        
+        // Add default dimensions (Overworld, Nether, End)
+        dims.add("minecraft:overworld");
+        dims.add("minecraft:the_nether");
+        dims.add("minecraft:the_end");
+        
+        // Always include current dimension if available and not already added
+        if (minecraft.level != null) {
+            String current = minecraft.level.dimension().location().toString();
+            if (!dims.contains(current)) {
+                dims.add(current);
+            }
+        }
+        
+        // Add dimensions from waypoints
+        for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
+            String d = wp.getDimension();
+            if (!dims.contains(d)) {
+                dims.add(d);
+            }
+        }
+        
+        // Sort: Overworld, Nether, End, others
+        dims.sort((a, b) -> {
+            int sA = getDimensionScore(a);
+            int sB = getDimensionScore(b);
+            if (sA != sB) return Integer.compare(sA, sB);
+            return a.compareTo(b);
+        });
+        return dims;
+    }
+
+    private int getDimensionScore(String dim) {
+        if (dim.equals("minecraft:overworld")) return 0;
+        if (dim.equals("minecraft:the_nether")) return 1;
+        if (dim.equals("minecraft:the_end")) return 2;
+        return 3;
+    }
+    
+    private ResourceLocation getDimensionIcon(String dim) {
+        if (dim.contains("nether")) return new ResourceLocation("minecraft", "textures/block/netherrack.png");
+        if (dim.contains("end") && !dim.contains("render")) return new ResourceLocation("minecraft", "textures/block/end_stone.png");
+        return new ResourceLocation("minecraft", "textures/block/grass_block_side.png");
     }
 }

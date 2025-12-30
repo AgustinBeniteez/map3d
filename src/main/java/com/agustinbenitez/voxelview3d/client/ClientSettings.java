@@ -27,16 +27,27 @@ public class ClientSettings {
         public int color;
         public String iconName; // e.g. "icon1"
         public boolean visible = true;
+        public String dimension; // e.g. "minecraft:overworld"
 
         public Waypoint() {}
 
-        public Waypoint(String name, int x, int y, int z, int color, String iconName) {
+        public Waypoint(String name, int x, int y, int z, int color, String iconName, String dimension) {
             this.name = name;
             this.x = x;
             this.y = y;
             this.z = z;
             this.color = color;
             this.iconName = (iconName == null || iconName.isEmpty()) ? "icon1" : iconName;
+            this.dimension = (dimension == null || dimension.isEmpty()) ? "minecraft:overworld" : dimension;
+        }
+        
+        // Backward compatibility constructor
+        public Waypoint(String name, int x, int y, int z, int color, String iconName) {
+            this(name, x, y, z, color, iconName, "minecraft:overworld");
+        }
+        
+        public String getDimension() {
+            return (dimension == null || dimension.isEmpty()) ? "minecraft:overworld" : dimension;
         }
     }
 }

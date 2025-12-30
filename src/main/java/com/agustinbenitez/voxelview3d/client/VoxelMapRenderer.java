@@ -24,13 +24,29 @@ import org.joml.Matrix4f;
 import java.util.HashMap;
 import java.util.Map;
 
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FurnaceBlock;
+import net.minecraft.world.level.block.WoolCarpetBlock;
+import net.minecraft.world.item.DyeColor;
+import net.minecraft.client.renderer.texture.TextureAtlas;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.entity.decoration.Painting;
 import net.minecraft.world.entity.decoration.PaintingVariant;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.util.RandomSource;
+import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.color.block.BlockColors;
+import net.minecraft.world.level.Level;
+import java.util.List;
 
 public class VoxelMapRenderer {
 
@@ -72,15 +88,16 @@ public class VoxelMapRenderer {
         boolean isUnderground = false;
         
         boolean isNether = mc.level != null && mc.level.dimension().location().getPath().contains("nether");
+        boolean isEnd = mc.level != null && mc.level.dimension().location().getPath().contains("end");
 
         if (mc.level != null) {
             int playerY = player.getBlockY();
             boolean canSeeSky = mc.level.canSeeSky(player.blockPosition());
             
             // Underground if can't see sky OR if deep in a hole (surface is significantly higher)
-            isUnderground = !canSeeSky && !isNether; // Treat Nether separately or as "always cave" but with lava floor
+            isUnderground = !canSeeSky && !isNether && !isEnd; // Treat Nether separately or as "always cave" but with lava floor
             
-            if (!isUnderground && !isNether) {
+            if (!isUnderground && !isNether && !isEnd) {
                  int x = player.getBlockX();
                  int z = player.getBlockZ();
                  
@@ -95,8 +112,8 @@ public class VoxelMapRenderer {
                  
                  // If player is > 3 blocks below the surrounding terrain, treat as underground (transparency)
                  if (playerY < avgSurrounding - 3) {
-                     isUnderground = true;
-                 }
+                    isUnderground = true;
+                }
             }
             
             if (isUnderground) {
@@ -118,6 +135,12 @@ public class VoxelMapRenderer {
                 
                 // Ceiling: just above player or cutY
                 renderMaxY = Math.min(cutY, playerY + 32); 
+            } else if (isEnd) {
+                // End Mode
+                // Always render from the bottom to ensure floating islands are visible even when high up
+                // The End is mostly void, so performance impact is minimal
+                renderMinY = minBuildHeight;
+                // renderMaxY remains cutY (or sky)
             } else {
                 // Surface Mode: Show deeper context
                 // Ensure we see down to sea level (60) when flying high, but keep culling when low
@@ -150,6 +173,540 @@ public class VoxelMapRenderer {
         // Reset state
         RenderSystem.enableCull();
         RenderSystem.disableDepthTest();
+    }
+
+    // --- Helper for Textured Blocks ---
+    private static void renderTexturedBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, BakedModel model, BlockState state, float r, float g, float b, float a, int exposedFaces) {
+        float x0 = (float)x;
+        float y0 = (float)y;
+        float z0 = (float)z;
+        float x1 = (float)(x + w);
+        float y1 = (float)(y + h);
+        float z1 = (float)(z + d);
+        
+        float y_min = y0;
+        float y_max = y1;
+        
+        RandomSource rand = RandomSource.create();
+        
+        // Top Face (y1) - Face Y+ - Bit 3 (8)
+        if ((exposedFaces & 8) != 0) {
+            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.UP, rand);
+            float minU = sprite.getU0();
+            float maxU = sprite.getU1();
+            float minV = sprite.getV0();
+            float maxV = sprite.getV1();
+            buf.vertex(pose, x0, y_max, z0).uv(minU, minV).color(r, g, b, a).endVertex();
+            buf.vertex(pose, x0, y_max, z1).uv(minU, maxV).color(r, g, b, a).endVertex();
+            buf.vertex(pose, x1, y_max, z1).uv(maxU, maxV).color(r, g, b, a).endVertex();
+            buf.vertex(pose, x1, y_max, z0).uv(maxU, minV).color(r, g, b, a).endVertex();
+        }
+        
+        // Bottom Face (y0) - Face Y- - Bit 2 (4)
+        if ((exposedFaces & 4) != 0) {
+            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.DOWN, rand);
+            float minU = sprite.getU0();
+            float maxU = sprite.getU1();
+            float minV = sprite.getV0();
+            float maxV = sprite.getV1();
+            buf.vertex(pose, x1, y_min, z0).uv(minU, minV).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
+            buf.vertex(pose, x1, y_min, z1).uv(minU, maxV).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
+            buf.vertex(pose, x0, y_min, z1).uv(maxU, maxV).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
+            buf.vertex(pose, x0, y_min, z0).uv(maxU, minV).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
+        }
+        
+        // North Face (z0) - Face Z- - Bit 4 (16)
+        if ((exposedFaces & 16) != 0) {
+            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.NORTH, rand);
+            float minU = sprite.getU0();
+            float maxU = sprite.getU1();
+            float minV = sprite.getV0();
+            float maxV = sprite.getV1();
+            buf.vertex(pose, x1, y_max, z0).uv(minU, minV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x1, y_min, z0).uv(minU, maxV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x0, y_min, z0).uv(maxU, maxV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x0, y_max, z0).uv(maxU, minV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+        }
+        
+        // South Face (z1) - Face Z+ - Bit 5 (32)
+        if ((exposedFaces & 32) != 0) {
+            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.SOUTH, rand);
+            float minU = sprite.getU0();
+            float maxU = sprite.getU1();
+            float minV = sprite.getV0();
+            float maxV = sprite.getV1();
+            buf.vertex(pose, x0, y_max, z1).uv(minU, minV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x0, y_min, z1).uv(minU, maxV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x1, y_min, z1).uv(maxU, maxV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x1, y_max, z1).uv(maxU, minV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+        }
+        
+        // West Face (x0) - Face X- - Bit 0 (1)
+        if ((exposedFaces & 1) != 0) {
+            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.WEST, rand);
+            float minU = sprite.getU0();
+            float maxU = sprite.getU1();
+            float minV = sprite.getV0();
+            float maxV = sprite.getV1();
+            buf.vertex(pose, x0, y_max, z0).uv(minU, minV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x0, y_min, z0).uv(minU, maxV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x0, y_min, z1).uv(maxU, maxV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x0, y_max, z1).uv(maxU, minV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+        }
+        
+        // East Face (x1) - Face X+ - Bit 1 (2)
+        if ((exposedFaces & 2) != 0) {
+            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.EAST, rand);
+            float minU = sprite.getU0();
+            float maxU = sprite.getU1();
+            float minV = sprite.getV0();
+            float maxV = sprite.getV1();
+            buf.vertex(pose, x1, y_max, z1).uv(minU, minV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x1, y_min, z1).uv(minU, maxV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x1, y_min, z0).uv(maxU, maxV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x1, y_max, z0).uv(maxU, minV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+        }
+    }
+    
+    private static TextureAtlasSprite getFaceSprite(BakedModel model, BlockState state, Direction dir, RandomSource rand) {
+        List<BakedQuad> quads = model.getQuads(state, dir, rand);
+        if (quads != null && !quads.isEmpty()) {
+            return quads.get(0).getSprite();
+        }
+        return model.getParticleIcon();
+    }
+    
+    private static void renderChunkBlocksTextured(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground) {
+        int[] packedPositions = chunkData.positions;
+        int[] colors = chunkData.colors;
+        byte[] lights = chunkData.lights;
+        
+        if (packedPositions == null) return;
+        
+        for (int i = 0; i < packedPositions.length; i++) {
+            int packed = packedPositions[i];
+            // Unpack
+            int renderType = (packed >> 17) & 0x7F;
+            
+            if (renderType <= 32) continue; // Skip standard blocks and Chests (32)
+            
+            int x = packed & 0xF;
+            int z = (packed >> 4) & 0xF;
+            int relY = (packed >> 8) & 0x1FF;
+            int exposedFaces = (packed >> 24) & 0x3F;
+            
+            int h = relY + minBuildHeight;
+            if (h < minY || h > maxY) continue;
+            
+            double rx = (cp.x * 16 + x) + 0.5 - centerX;
+            double ry = h - centerY;
+            double rz = (cp.z * 16 + z) + 0.5 - centerZ;
+            
+            int color = colors[i];
+            
+            float brightness = 1.0f;
+            float alpha = 1.0f;
+            
+            // Lighting Logic (Simplified copy)
+            if (isUnderground && !ClientSettings.fullBrightMap) {
+                double distSq = rx * rx + ry * ry + rz * rz;
+                if (distSq > 36.0) {
+                    double dist = Math.sqrt(distSq);
+                    double fade = 1.0 - ((dist - 6.0) / 10.0);
+                    brightness = (float) Math.max(0.3, Math.min(1.0, fade));
+                }
+            }
+            
+            boolean useNightMode = ClientSettings.isNightMode || isUnderground;
+            if (useNightMode && lights != null && i < lights.length) {
+                int lightLevel = lights[i];
+                float nightBase = 0.25f; 
+                float lightContrib = (lightLevel / 15.0f);
+                brightness *= (nightBase + lightContrib * (1.0f - nightBase));
+            }
+            
+            BlockState state = Blocks.AIR.defaultBlockState();
+            if (renderType == 32) state = Blocks.CHEST.defaultBlockState();
+            else if (renderType == 33) state = Blocks.CRAFTING_TABLE.defaultBlockState();
+            else if (renderType == 34) state = Blocks.FURNACE.defaultBlockState().setValue(FurnaceBlock.LIT, false);
+            else if (renderType == 35) state = Blocks.BOOKSHELF.defaultBlockState();
+            else if (renderType == 36) state = Blocks.TNT.defaultBlockState();
+            else if (renderType == 37) state = Blocks.PUMPKIN.defaultBlockState();
+            else if (renderType == 38) state = Blocks.MELON.defaultBlockState();
+            else if (renderType == 39) state = Blocks.ENCHANTING_TABLE.defaultBlockState();
+            else if (renderType == 40) state = Blocks.BARREL.defaultBlockState();
+            else if (renderType >= 41 && renderType <= 56) {
+                int colorId = renderType - 41;
+                state = getCarpetState(DyeColor.byId(colorId));
+            } else if (renderType == 57) {
+                state = Blocks.MOSS_CARPET.defaultBlockState();
+            }
+            
+            BakedModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
+            
+            float bw = 1.0f;
+            float bh = 1.0f;
+            float bd = 1.0f;
+            
+            if (renderType == 39 || (renderType >= 41 && renderType <= 57)) {
+                // Use actual 3D model for carpets and non-full blocks to get correct side UVs and geometry
+                Level level = Minecraft.getInstance().level;
+                BlockPos pos = new BlockPos(cp.getMinBlockX() + x, h, cp.getMinBlockZ() + z);
+                renderBakedModel(buf, pose, rx, ry, rz, model, state, brightness, brightness, brightness, alpha, exposedFaces, level, pos);
+            } else {
+                renderTexturedBox(buf, pose, rx, ry, rz, bw, bh, bd, model, state, brightness, brightness, brightness, alpha, exposedFaces);
+            }
+        }
+    }
+
+    private static void renderBakedModel(BufferBuilder buf, Matrix4f pose, double x, double y, double z, BakedModel model, BlockState state, float r, float g, float b, float a, int exposedFaces, Level level, BlockPos pos) {
+        RandomSource rand = RandomSource.create();
+        
+        // Iterate over directions based on exposedFaces
+        // Bits: 0=West, 1=East, 2=Down, 3=Up, 4=North, 5=South
+        
+        // West (X-)
+        if ((exposedFaces & 1) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.WEST, rand, r * 0.6f, g * 0.6f, b * 0.6f, a, level, pos);
+        // East (X+)
+        if ((exposedFaces & 2) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.EAST, rand, r * 0.6f, g * 0.6f, b * 0.6f, a, level, pos);
+        // Down (Y-)
+        if ((exposedFaces & 4) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.DOWN, rand, r * 0.5f, g * 0.5f, b * 0.5f, a, level, pos);
+        // Up (Y+)
+        if ((exposedFaces & 8) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.UP, rand, r, g, b, a, level, pos);
+        // North (Z-)
+        if ((exposedFaces & 16) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.NORTH, rand, r * 0.8f, g * 0.8f, b * 0.8f, a, level, pos);
+        // South (Z+)
+        if ((exposedFaces & 32) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.SOUTH, rand, r * 0.8f, g * 0.8f, b * 0.8f, a, level, pos);
+        
+        // Also check for unculled faces (null direction) - always render these
+        renderFace(buf, pose, x, y, z, model, state, null, rand, r, g, b, a, level, pos);
+    }
+    
+    private static void renderFace(BufferBuilder buf, Matrix4f pose, double x, double y, double z, BakedModel model, BlockState state, Direction dir, RandomSource rand, float r, float g, float b, float a, Level level, BlockPos pos) {
+        List<BakedQuad> quads = model.getQuads(state, dir, rand);
+        if (quads == null || quads.isEmpty()) return;
+        
+        BlockColors blockColors = Minecraft.getInstance().getBlockColors();
+        
+        for (BakedQuad quad : quads) {
+            float qr = r;
+            float qg = g;
+            float qb = b;
+            
+            if (quad.isTinted() && level != null && pos != null) {
+                int tintIndex = quad.getTintIndex();
+                int color = blockColors.getColor(state, level, pos, tintIndex);
+                float tr = (color >> 16 & 255) / 255.0F;
+                float tg = (color >> 8 & 255) / 255.0F;
+                float tb = (color & 255) / 255.0F;
+                qr *= tr;
+                qg *= tg;
+                qb *= tb;
+            }
+
+            int[] vertices = quad.getVertices();
+            // DefaultVertexFormat.BLOCK: 8 ints per vertex (32 bytes)
+            // Position: 0, 1, 2 (floats)
+            // UV: 4, 5 (floats)
+            
+            for (int i = 0; i < 4; i++) {
+                float vx = Float.intBitsToFloat(vertices[i * 8 + 0]);
+                float vy = Float.intBitsToFloat(vertices[i * 8 + 1]);
+                float vz = Float.intBitsToFloat(vertices[i * 8 + 2]);
+                
+                float u = Float.intBitsToFloat(vertices[i * 8 + 4]);
+                float v = Float.intBitsToFloat(vertices[i * 8 + 5]);
+                
+                buf.vertex(pose, (float)(x + vx), (float)(y + vy), (float)(z + vz))
+                   .uv(u, v)
+                   .color(qr, qg, qb, a)
+                   .endVertex();
+            }
+        }
+    }
+
+    private static BlockState getCarpetState(DyeColor color) {
+        switch (color) {
+            case WHITE: return Blocks.WHITE_CARPET.defaultBlockState();
+            case ORANGE: return Blocks.ORANGE_CARPET.defaultBlockState();
+            case MAGENTA: return Blocks.MAGENTA_CARPET.defaultBlockState();
+            case LIGHT_BLUE: return Blocks.LIGHT_BLUE_CARPET.defaultBlockState();
+            case YELLOW: return Blocks.YELLOW_CARPET.defaultBlockState();
+            case LIME: return Blocks.LIME_CARPET.defaultBlockState();
+            case PINK: return Blocks.PINK_CARPET.defaultBlockState();
+            case GRAY: return Blocks.GRAY_CARPET.defaultBlockState();
+            case LIGHT_GRAY: return Blocks.LIGHT_GRAY_CARPET.defaultBlockState();
+            case CYAN: return Blocks.CYAN_CARPET.defaultBlockState();
+            case PURPLE: return Blocks.PURPLE_CARPET.defaultBlockState();
+            case BLUE: return Blocks.BLUE_CARPET.defaultBlockState();
+            case BROWN: return Blocks.BROWN_CARPET.defaultBlockState();
+            case GREEN: return Blocks.GREEN_CARPET.defaultBlockState();
+            case RED: return Blocks.RED_CARPET.defaultBlockState();
+            case BLACK: return Blocks.BLACK_CARPET.defaultBlockState();
+            default: return Blocks.WHITE_CARPET.defaultBlockState();
+        }
+    }
+
+    private static void renderChunkChests(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground) {
+        int[] packedPositions = chunkData.positions;
+        byte[] lights = chunkData.lights;
+        if (packedPositions == null) return;
+        
+        // Pass 1: Single Chests
+        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, 0);
+        // Pass 2: Left Chests
+        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, 1);
+        // Pass 3: Right Chests
+        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, 2);
+    }
+
+    private static void renderChestPass(BufferBuilder buf, Matrix4f pose, int[] positions, byte[] lights, ChunkPos cp, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, int targetType) {
+        // Use standard POSITION_COLOR shader (no texture binding needed for manual geometry)
+        // Ensure shader is set before calling this if not already set, or set here?
+        // Caller (renderChunks) sets POSITION_COLOR before calling renderChunkChests.
+        // But renderChunkChests was setting texture before.
+        // We need to ensure we are in POSITION_COLOR mode.
+        // Actually, renderChunks calls renderChunkChests then restores POSITION_COLOR.
+        // So we can assume POSITION_COLOR is active if we don't change it, OR we should explicitly set it if we want to be safe.
+        // But since we are inside a method that might be called in sequence, let's just assume the builder is ready for COLOR.
+        // Wait, the previous implementation used POSITION_TEX_COLOR and bound a texture.
+        // We need to switch to POSITION_COLOR.
+        
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        RenderSystem.disableCull(); // Disable Cull for manual geometry to ensure visibility regardless of winding
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        
+        for (int i = 0; i < positions.length; i++) {
+            int packed = positions[i];
+            int renderType = (packed >> 17) & 0x7F;
+            
+            if (renderType != 32) continue; // Only Chests
+            
+            int exposedFaces = (packed >> 24) & 0x3F;
+            int type = (exposedFaces >> 2) & 0x3;
+            
+            if (type != targetType) continue;
+            
+            int facingIdx = exposedFaces & 0x3; // 0=N, 1=S, 2=E, 3=W
+            
+            int x = packed & 0xF;
+            int z = (packed >> 4) & 0xF;
+            int relY = (packed >> 8) & 0x1FF;
+            int h = relY + minBuildHeight;
+            
+            if (h < minY || h > maxY) continue;
+            
+            double rx = (cp.x * 16 + x) + 0.5 - centerX;
+            double ry = h - centerY;
+            double rz = (cp.z * 16 + z) + 0.5 - centerZ;
+            
+            float brightness = 1.0f;
+            if (isUnderground && !ClientSettings.fullBrightMap) {
+                double distSq = rx * rx + ry * ry + rz * rz;
+                if (distSq > 36.0) {
+                    double dist = Math.sqrt(distSq);
+                    double fade = 1.0 - ((dist - 6.0) / 10.0);
+                    brightness = (float) Math.max(0.3, Math.min(1.0, fade));
+                }
+            }
+            
+            boolean useNightMode = ClientSettings.isNightMode || isUnderground;
+            if (useNightMode && lights != null && i < lights.length) {
+                int lightLevel = lights[i];
+                float nightBase = 0.25f; 
+                float lightContrib = (lightLevel / 15.0f);
+                brightness *= (nightBase + lightContrib * (1.0f - nightBase));
+            }
+            
+            // Standard Chest Rotation - Inverted logic as per request (Flip 180)
+            float yRot = 0;
+            switch(facingIdx) {
+                case 0: yRot = 0; break;   // North (Was 180)
+                case 1: yRot = 180; break; // South (Was 0)
+                case 2: yRot = 90; break;  // East (Was 270)
+                case 3: yRot = 270; break; // West (Was 90)
+            }
+            
+            Matrix4f localPose = new Matrix4f(pose);
+            localPose.translate((float)rx, (float)ry + 0.5f, (float)rz);
+            localPose.rotate(Axis.YP.rotationDegrees(yRot));
+            localPose.translate(-0.5f, -0.5f, -0.5f);
+            
+            renderChestModelManual(buf, localPose, type, brightness);
+        }
+        
+        BufferUploader.drawWithShader(buf.end());
+        RenderSystem.enableCull(); // Re-enable Cull
+    }
+
+    private static void renderChestModelManual(BufferBuilder buf, Matrix4f pose, int type, float b) {
+        float alpha = 1.0f;
+        
+        // Colors
+        // Wood: #8f6222
+        // R=0.56, G=0.38, B=0.13
+        float woodR = 0.56f * b;
+        float woodG = 0.38f * b;
+        float woodB = 0.13f * b;
+        
+        // Lock: Silver
+        // R=0.75, G=0.75, B=0.75 (C0C0C0)
+        float lockR = 0.75f * b;
+        float lockG = 0.75f * b;
+        float lockB = 0.75f * b;
+        
+        // Separation Line / Shadow: Darker
+        float shadowR = woodR * 0.6f;
+        float shadowG = woodG * 0.6f;
+        float shadowB = woodB * 0.6f;
+
+        // Dimensions
+        // Standard Chest: 14x14 pixels (1/16 padding on sides)
+        // Height: 14/16 (0.875)
+        float hBase = 10/16f; // 0.625
+        float hLid = 4/16f;   // 0.25
+        float hTotal = hBase + hLid; // 0.875
+        
+        // X Bounds (Left/Right) - Facing South (+Z is Front, +X is Left, -X is Right)
+        // Wait, in my manual setup:
+        // +X is East (Left of South-facing player? No, Right of player)
+        // Let's stick to Local Space.
+        // Z+ is Front. Z- is Back.
+        // X+ is Right (East). X- is Left (West).
+        // Standard: Center is 0.5. Width 14/16.
+        // X Range: 1/16 to 15/16.
+        
+        float xMin = 1/16f;
+        float xMax = 15/16f;
+        
+        int faces = 63; // All faces (1=W, 2=E, 4=D, 8=U, 16=N, 32=S)
+        
+        if (type == 2) { // Swapped: Treat Type 2 as Left Chest (Connects to Right)
+            // Left (East) connects on Local X+
+            xMin = 1/16f;
+            xMax = 1.0f; // Connects on +X side
+            faces &= ~2; // Hide East Face (Local X+)
+        } else if (type == 1) { // Swapped: Treat Type 1 as Right Chest
+            // Right (West) connects on Local X-
+            xMin = 0.0f; // Connects on -X side
+            xMax = 15/16f;
+            faces &= ~1; // Hide West Face (Local X-)
+        }
+        
+        float zMin = 1/16f;
+        float zMax = 15/16f; // Front Face is at Z=15/16
+        
+        // 1. Base (Bottom Box)
+        // Y: 0 to 10/16
+        // Add a small gap at top for "separation"
+        float yBaseEnd = 9.5f/16f;
+        renderColorBox(buf, pose, xMin, 0, zMin, xMax, yBaseEnd, zMax, woodR, woodG, woodB, alpha, faces);
+        
+        // 2. Lid (Top Box)
+        // Y: 10/16 to 14/16
+        // Start slightly higher to create gap
+        float yLidStart = 10/16f;
+        float yLidEnd = 14/16f;
+        renderColorBox(buf, pose, xMin, yLidStart, zMin, xMax, yLidEnd, zMax, woodR, woodG, woodB, alpha, faces);
+        
+        // 3. Dark Separation Line
+        // Extend to edge if connected
+        float sepXMin = xMin + 0.01f;
+        float sepXMax = xMax - 0.01f;
+        
+        if (type == 2) sepXMax = xMax; // Swapped: No gap on connected side (East) for Type 2
+        if (type == 1) sepXMin = xMin; // Swapped: No gap on connected side (West) for Type 1
+        
+        renderColorBox(buf, pose, sepXMin, yBaseEnd, zMin + 0.01f, sepXMax, yLidStart, zMax - 0.01f, shadowR, shadowG, shadowB, alpha, faces);
+        
+        // 4. Lock
+        // Size: 2 pixels wide (2/16 = 0.125), 4 pixels high (4/16 = 0.25), 1 pixel thick (1/16)
+        // Centered on ZMax face.
+        // Y Center: Around the seam (10/16).
+        // Y Range: 8/16 to 12/16?
+        float lockW = 2/16f;
+        float lockH = 4/16f;
+        float lockD = 1/16f;
+        
+        float lockY = 8/16f;
+        float lockZ = zMax; // On the front face
+        
+        float lockXMin, lockXMax;
+        
+        if (type == 0) { // Single
+            // Center
+            float cx = (xMin + xMax) / 2.0f;
+            lockXMin = cx - lockW/2;
+            lockXMax = cx + lockW/2;
+            renderColorBox(buf, pose, lockXMin, lockY, lockZ, lockXMax, lockY + lockH, lockZ + lockD, lockR, lockG, lockB, alpha);
+        } else if (type == 2) { // Swapped: Left (Type 2)
+            // Lock is on the connecting edge (X=1)
+            // Draw half lock on the right edge.
+            // Width 1 pixel (1/16).
+            lockXMin = xMax - 1/16f;
+            lockXMax = xMax;
+             renderColorBox(buf, pose, lockXMin, lockY, lockZ, lockXMax, lockY + lockH, lockZ + lockD, lockR, lockG, lockB, alpha);
+        } else if (type == 1) { // Swapped: Right (Type 1)
+            // Lock is on the connecting edge (X=0)
+            // Draw half lock on the left edge.
+            lockXMin = xMin;
+            lockXMax = xMin + 1/16f;
+             renderColorBox(buf, pose, lockXMin, lockY, lockZ, lockXMax, lockY + lockH, lockZ + lockD, lockR, lockG, lockB, alpha);
+        }
+    }
+
+    private static void renderColorBox(BufferBuilder buf, Matrix4f pose, float x0, float y0, float z0, float x1, float y1, float z1, float r, float g, float b, float a) {
+        renderColorBox(buf, pose, x0, y0, z0, x1, y1, z1, r, g, b, a, 63);
+    }
+
+    private static void renderColorBox(BufferBuilder buf, Matrix4f pose, float x0, float y0, float z0, float x1, float y1, float z1, float r, float g, float b, float a, int faces) {
+        // Bottom (4)
+        if ((faces & 4) != 0) {
+            buf.vertex(pose, x0, y0, z0).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
+            buf.vertex(pose, x1, y0, z0).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
+            buf.vertex(pose, x1, y0, z1).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
+            buf.vertex(pose, x0, y0, z1).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
+        }
+        
+        // Top (8)
+        if ((faces & 8) != 0) {
+            buf.vertex(pose, x0, y1, z0).color(r, g, b, a).endVertex();
+            buf.vertex(pose, x0, y1, z1).color(r, g, b, a).endVertex();
+            buf.vertex(pose, x1, y1, z1).color(r, g, b, a).endVertex();
+            buf.vertex(pose, x1, y1, z0).color(r, g, b, a).endVertex();
+        }
+        
+        // West (x0) (1)
+        if ((faces & 1) != 0) {
+            buf.vertex(pose, x0, y0, z0).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x0, y0, z1).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x0, y1, z1).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x0, y1, z0).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+        }
+        
+        // East (x1) (2)
+        if ((faces & 2) != 0) {
+            buf.vertex(pose, x1, y0, z0).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x1, y1, z0).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x1, y1, z1).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.vertex(pose, x1, y0, z1).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+        }
+        
+        // North (z0) (16)
+        if ((faces & 16) != 0) {
+            buf.vertex(pose, x0, y0, z0).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x0, y1, z0).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x1, y1, z0).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x1, y0, z0).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+        }
+        
+        // South (z1) (32)
+        if ((faces & 32) != 0) {
+            buf.vertex(pose, x0, y0, z1).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x1, y0, z1).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x1, y1, z1).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.vertex(pose, x0, y1, z1).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+        }
     }
 
     private static void renderNetherLavaFloor(PoseStack poseStack, Player player, int radius) {
@@ -217,6 +774,8 @@ public class VoxelMapRenderer {
         
         for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
             if (!wp.visible) continue;
+            // Only render waypoints in the current dimension
+            if (player.level() != null && !wp.getDimension().equals(player.level().dimension().location().toString())) continue;
             
             double rx = wp.x + 0.5 - centerX;
             double rz = wp.z + 0.5 - centerZ;
@@ -362,6 +921,19 @@ public class VoxelMapRenderer {
                          buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
                          renderChunkBlocks(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
                          BufferUploader.drawWithShader(buf.end());
+                         
+                         // Textured Pass
+                         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
+                         RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
+                         buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+                         renderChunkBlocksTextured(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+                         BufferUploader.drawWithShader(buf.end());
+                         
+                         // Chest Pass
+                         renderChunkChests(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+                         
+                         // Restore Shader for next iteration
+                         RenderSystem.setShader(GameRenderer::getPositionColorShader);
                      }
                 }
             }
@@ -371,6 +943,19 @@ public class VoxelMapRenderer {
                 buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
                 renderChunkBlocks(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
                 BufferUploader.drawWithShader(buf.end());
+                
+                // Textured Pass
+                RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
+                RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
+                buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+                renderChunkBlocksTextured(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+                BufferUploader.drawWithShader(buf.end());
+                
+                // Chest Pass
+                renderChunkChests(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+                
+                // Restore Shader
+                RenderSystem.setShader(GameRenderer::getPositionColorShader);
             }
         }
     }
@@ -389,8 +974,10 @@ public class VoxelMapRenderer {
             int x = packed & 0xF;
             int z = (packed >> 4) & 0xF;
             int relY = (packed >> 8) & 0x1FF;
-            int renderType = (packed >> 17) & 0x1F;
-            int exposedFaces = (packed >> 22) & 0x3F;
+            int renderType = (packed >> 17) & 0x7F; // Expanded to 7 bits
+            int exposedFaces = (packed >> 24) & 0x3F; // Shifted to 24
+            
+            if (renderType >= 32) continue; // Skip textured blocks (handled in textured pass)
             
             // If exposedFaces is 0, it might be old data OR a block with no exposed faces (fully buried).
             // But fully buried blocks shouldn't be in the list?
@@ -1166,20 +1753,86 @@ public class VoxelMapRenderer {
                 float iG = (g * brightness) / 255.0f;
                 float iB = (b * brightness) / 255.0f;
                 
-                // Center Post: 2x2 pixels -> 0.125f thickness
-                float postTh = 0.125f;
+                // Dimensions for "3 bars" look
+                float th = 0.0625f;       // 1 pixel thickness
+                float spread = 0.125f;    // 2 pixels spacing from center
                 
-                renderBox(buf, pose, rx, ry, rz, postTh, 1.0f, postTh, iR, iG, iB, alpha);
+                // Determine orientation
+                // NS: Connected N/S but not E/W (Straight wall N-S)
+                // EW: Connected E/W but not N/S (Straight wall E-W)
+                // Cross: Everything else (Isolated, Corners, Intersections)
+                boolean isNS = (cN || cS) && !(cE || cW);
+                boolean isEW = (cE || cW) && !(cN || cS);
+                boolean hasXSpread = isNS || (!isNS && !isEW); // Spread along X (for N-S walls or Cross)
+                boolean hasZSpread = isEW || (!isNS && !isEW); // Spread along Z (for E-W walls or Cross)
                 
-                // Arms
-                // Length: Center(0) to Edge(0.5) - PostHalf(0.0625) = 0.4375
-                float armL = 0.4375f;
-                float armOffset = 0.5f - (armL / 2.0f); // Center of arm box
+                // 1. Vertical Bars
+                // Center Bar (Always)
+                renderBox(buf, pose, rx, ry, rz, th, 1.0f, th, iR, iG, iB, alpha);
                 
-                if (cN) renderBox(buf, pose, rx, ry, rz - armOffset, postTh, 1.0f, armL, iR, iG, iB, alpha);
-                if (cS) renderBox(buf, pose, rx, ry, rz + armOffset, postTh, 1.0f, armL, iR, iG, iB, alpha);
-                if (cE) renderBox(buf, pose, rx + armOffset, ry, rz, armL, 1.0f, postTh, iR, iG, iB, alpha);
-                if (cW) renderBox(buf, pose, rx - armOffset, ry, rz, armL, 1.0f, postTh, iR, iG, iB, alpha);
+                // Side Bars
+                if (hasXSpread) {
+                    renderBox(buf, pose, rx - spread, ry, rz, th, 1.0f, th, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx + spread, ry, rz, th, 1.0f, th, iR, iG, iB, alpha);
+                }
+                if (hasZSpread) {
+                    renderBox(buf, pose, rx, ry, rz - spread, th, 1.0f, th, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, ry, rz + spread, th, 1.0f, th, iR, iG, iB, alpha);
+                }
+                
+                // 2. Horizontal Rails (Top, Middle, Bottom)
+                // To connect the bars and the neighbors
+                float railY1 = (float) (ry + 0.375); // Top rail
+                float railY2 = (float) (ry - 0.375); // Bottom rail
+                float railY3 = (float) ry;           // Middle rail
+                float railH = th;
+                
+                // Hub Rails (Connecting internal bars)
+                if (hasXSpread) {
+                    float w = spread * 2.0f + th;
+                    renderBox(buf, pose, rx, railY1, rz, w, railH, th, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, railY2, rz, w, railH, th, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, railY3, rz, w, railH, th, iR, iG, iB, alpha);
+                }
+                if (hasZSpread) {
+                    float d = spread * 2.0f + th;
+                    renderBox(buf, pose, rx, railY1, rz, th, railH, d, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, railY2, rz, th, railH, d, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, railY3, rz, th, railH, d, iR, iG, iB, alpha);
+                }
+                
+                // Arm Rails (Connecting to neighbors)
+                // Start from the edge of the hub area to the block edge
+                float edge = spread + th / 2.0f; 
+                float armL = 0.5f - edge; 
+                float armOff = edge + armL / 2.0f;
+                
+                // Arms match the spread width (if we have X spread, N/S arms are wide)
+                float wideDim = spread * 2.0f + th;
+                float thinDim = th;
+                float armW = hasXSpread ? wideDim : thinDim;
+                float armD = hasZSpread ? wideDim : thinDim;
+                
+                if (cN) {
+                    renderBox(buf, pose, rx, railY1, rz - armOff, armW, railH, armL, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, railY2, rz - armOff, armW, railH, armL, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, railY3, rz - armOff, armW, railH, armL, iR, iG, iB, alpha);
+                }
+                if (cS) {
+                    renderBox(buf, pose, rx, railY1, rz + armOff, armW, railH, armL, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, railY2, rz + armOff, armW, railH, armL, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, railY3, rz + armOff, armW, railH, armL, iR, iG, iB, alpha);
+                }
+                if (cE) {
+                    renderBox(buf, pose, rx + armOff, railY1, rz, armL, railH, armD, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx + armOff, railY2, rz, armL, railH, armD, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx + armOff, railY3, rz, armL, railH, armD, iR, iG, iB, alpha);
+                }
+                if (cW) {
+                    renderBox(buf, pose, rx - armOff, railY1, rz, armL, railH, armD, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx - armOff, railY2, rz, armL, railH, armD, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx - armOff, railY3, rz, armL, railH, armD, iR, iG, iB, alpha);
+                }
                 
             } else if (renderType == 24) { // RENDER_FENCE
                 // Connections: N(1), S(2), E(4), W(8)
@@ -1401,6 +2054,136 @@ public class VoxelMapRenderer {
             } else if (renderType == 29) { // RENDER_GLASS_BLOCK
                 float glassAlpha = 0.4f;
                 renderBlockWithBorders(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, glassAlpha, exposedFaces);
+            
+            } else if (renderType == 30) { // RENDER_END_ROD
+                 // End Rod: Base + Rod
+                 // Facing: D(0), U(1), N(2), S(3), W(4), E(5)
+                 int facing = exposedFaces & 7;
+                 
+                 // Color: Force bright white/cyan for "glow" effect
+                 // We ignore brightness multiplier for the rod to make it look self-luminous
+                 float eR = 1.0f; 
+                 float eG = 1.0f;
+                 float eB = 1.0f;
+                 
+                 // Dimensions
+                 float rodTh = 0.125f; // 2 pixels
+                 float rodL = 1.0f; // Length
+                 float baseW = 0.25f; // 4 pixels
+                 float baseH = 0.0625f; // 1 pixel
+                 
+                 // Base Color (Purple-ish)
+                 float bR = 0.8f;
+                 float bG = 0.6f;
+                 float bB = 0.9f;
+                 
+                 // Center defaults
+                 float cx = (float)rx;
+                 float cy = (float)ry;
+                 float cz = (float)rz;
+                 
+                 if (facing == 0) { // Down
+                     // Rod
+                     renderBox(buf, pose, cx, cy, cz, rodTh, rodL, rodTh, eR, eG, eB, alpha);
+                     // Base (Top)
+                     renderBox(buf, pose, cx, cy + 0.5 - baseH/2.0, cz, baseW, baseH, baseW, bR, bG, bB, alpha);
+                 } else if (facing == 1) { // Up
+                     // Rod
+                     renderBox(buf, pose, cx, cy, cz, rodTh, rodL, rodTh, eR, eG, eB, alpha);
+                     // Base (Bottom)
+                     renderBox(buf, pose, cx, cy - 0.5 + baseH/2.0, cz, baseW, baseH, baseW, bR, bG, bB, alpha);
+                 } else if (facing == 2) { // North (Z-)
+                     // Rod along Z
+                     renderBox(buf, pose, cx, cy, cz, rodTh, rodTh, rodL, eR, eG, eB, alpha);
+                     // Base (South end -> Z+)
+                     renderBox(buf, pose, cx, cy, cz + 0.5 - baseH/2.0, baseW, baseW, baseH, bR, bG, bB, alpha);
+                 } else if (facing == 3) { // South (Z+)
+                     // Rod along Z
+                     renderBox(buf, pose, cx, cy, cz, rodTh, rodTh, rodL, eR, eG, eB, alpha);
+                     // Base (North end -> Z-)
+                     renderBox(buf, pose, cx, cy, cz - 0.5 + baseH/2.0, baseW, baseW, baseH, bR, bG, bB, alpha);
+                 } else if (facing == 4) { // West (X-)
+                     // Rod along X
+                     renderBox(buf, pose, cx, cy, cz, rodL, rodTh, rodTh, eR, eG, eB, alpha);
+                     // Base (East end -> X+)
+                     renderBox(buf, pose, cx + 0.5 - baseH/2.0, cy, cz, baseH, baseW, baseW, bR, bG, bB, alpha);
+                 } else if (facing == 5) { // East (X+)
+                     // Rod along X
+                     renderBox(buf, pose, cx, cy, cz, rodL, rodTh, rodTh, eR, eG, eB, alpha);
+                     // Base (West end -> X-)
+                     renderBox(buf, pose, cx - 0.5 + baseH/2.0, cy, cz, baseH, baseW, baseW, bR, bG, bB, alpha);
+                 }
+
+            } else if (renderType == 31) { // RENDER_BANNER
+                 // Banner
+                 boolean isWall = (exposedFaces & 16) != 0;
+                 int data = exposedFaces & 15;
+                 
+                 // Banner Color (from block)
+                 float bR = (r * brightness) / 255.0f;
+                 float bG = (g * brightness) / 255.0f;
+                 float bB = (b * brightness) / 255.0f;
+                 
+                 // Wood Color (Dark Oak-ish)
+                 float wR = 0.4f * brightness;
+                 float wG = 0.3f * brightness;
+                 float wB = 0.1f * brightness;
+                 
+                 // Create a local copy of the matrix for rotation
+                 Matrix4f model = new Matrix4f(pose);
+                 model.translate((float)rx, (float)ry, (float)rz);
+                 
+                 if (isWall) {
+                     // Wall Banner
+                     // Facing: N(2), S(3), W(4), E(5)
+                     // Logic: Model faces North (-Z). Offset to Z=+0.5 (Back to Wall).
+                     float rot = 0;
+                     if (data == 2) rot = 0; // North (Faces North, Wall at South)
+                     else if (data == 3) rot = 180; // South (Faces South, Wall at North)
+                     else if (data == 4) rot = 90; // West (Faces West, Wall at East)
+                     else if (data == 5) rot = 270; // East (Faces East, Wall at West)
+                     
+                     model.rotate(Axis.YP.rotationDegrees(rot));
+                     
+                     // Wall Banner Model (Taller)
+                     // Crossbar (Against wall at Z=0.5)
+                     // Slightly forward from wall: Z=0.4
+                     float zOff = 0.4f;
+                     
+                     // Crossbar
+                     renderBox(buf, model, 0, 0.35, zOff, 0.8f, 0.1f, 0.1f, wR, wG, wB, alpha);
+                     
+                     // Sheet (Longer)
+                     // Height 1.5 blocks visually?
+                     // Start at 0.3, go down to -1.2?
+                     renderBox(buf, model, 0, -0.4, zOff - 0.06, 0.7f, 1.4f, 0.05f, bR, bG, bB, alpha);
+                     
+                 } else {
+                     // Standing Banner
+                     // Rotation 0-15.
+                     float angle = data * 22.5f;
+                     
+                     model.rotate(Axis.YP.rotationDegrees(-angle));
+                     
+                     // Standing Banner Model (Taller)
+                     // Pole: Height 2.0 blocks (starts at -0.5? No, base is at y-0.5 relative to center?)
+                     // Block center is 0.5. Base is at 0.
+                     // So relative to center, base is at -0.5.
+                     // Top is at +1.5.
+                     
+                     // Pole (Thin)
+                     renderBox(buf, model, 0, 0.5, 0, 0.0625f, 2.0f, 0.0625f, wR, wG, wB, alpha);
+                     
+                     // Crossbar (Top)
+                     // At Y = +1.4
+                     renderBox(buf, model, 0, 1.4, 0, 0.8f, 0.0625f, 0.0625f, wR, wG, wB, alpha);
+                     
+                     // Sheet (Hanging)
+                     // From 1.4 down. Length 1.6.
+                     // Center Y = 1.4 - 0.8 = 0.6.
+                     renderBox(buf, model, 0, 0.6, 0.04, 0.7f, 1.6f, 0.04f, bR, bG, bB, alpha);
+                 }
+
             } else {
                 // Render block as a box (1.0 size for solid terrain)
                 renderBlockWithBorders(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha, exposedFaces);
@@ -1447,6 +2230,8 @@ public class VoxelMapRenderer {
                 if (ClientSettings.showAnimals) visible = true;
             } else if (e instanceof Player) {
                 if (ClientSettings.showPlayers) visible = true;
+            } else if (e instanceof EndCrystal) {
+                visible = true;
             }
             
             if (!visible) continue;

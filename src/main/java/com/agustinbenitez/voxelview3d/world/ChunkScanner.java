@@ -41,7 +41,26 @@ import net.minecraft.world.level.block.state.properties.SlabType;
 import net.minecraft.world.level.block.state.properties.StairsShape;
 import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.AbstractGlassBlock;
+import net.minecraft.world.level.block.EndRodBlock;
+import net.minecraft.world.level.block.BannerBlock;
+import net.minecraft.world.level.block.WallBannerBlock;
+import net.minecraft.world.level.block.AbstractBannerBlock;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.CraftingTableBlock;
+import net.minecraft.world.level.block.FurnaceBlock;
+import net.minecraft.world.level.block.WoolCarpetBlock;
+import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.level.block.state.properties.ChestType;
+import net.minecraft.world.level.block.BlastFurnaceBlock;
+import net.minecraft.world.level.block.SmokerBlock;
+import net.minecraft.world.level.block.EnchantmentTableBlock;
+import net.minecraft.world.level.block.PumpkinBlock;
+import net.minecraft.world.level.block.MelonBlock;
+import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.ChestType;
+import net.minecraft.world.level.block.WoolCarpetBlock;
+import net.minecraft.world.item.DyeColor;
 
 public class ChunkScanner {
     
@@ -89,6 +108,17 @@ public class ChunkScanner {
     public static final int RENDER_TRAPDOOR = 27;
     public static final int RENDER_GLASS_PANE = 28;
     public static final int RENDER_GLASS_BLOCK = 29;
+    public static final int RENDER_END_ROD = 30;
+    public static final int RENDER_BANNER = 31;
+    public static final int RENDER_CHEST = 32;
+    public static final int RENDER_CRAFTING_TABLE = 33;
+    public static final int RENDER_FURNACE = 34;
+    public static final int RENDER_BOOKSHELF = 35;
+    public static final int RENDER_TNT = 36;
+    public static final int RENDER_PUMPKIN = 37;
+    public static final int RENDER_MELON = 38;
+    public static final int RENDER_ENCHANTMENT_TABLE = 39;
+    public static final int RENDER_BARREL = 40;
     
     private static final Map<ChunkPos, ScannedChunk> CHUNK_DATA = new HashMap<>();
 
@@ -381,6 +411,70 @@ public class ChunkScanner {
                                 } else if (state.getBlock() instanceof AbstractGlassBlock) {
                                     renderType = RENDER_GLASS_BLOCK;
                                     // exposedFaces is already calculated based on transparency
+                                } else if (state.getBlock() instanceof EndRodBlock) {
+                                    renderType = RENDER_END_ROD;
+                                    exposedFaces = 0;
+                                    // Pack Facing: D(0), U(1), N(2), S(3), W(4), E(5)
+                                    int facing = state.getValue(EndRodBlock.FACING).get3DDataValue();
+                                    exposedFaces = facing;
+                                } else if (state.getBlock() instanceof AbstractBannerBlock) {
+                                    renderType = RENDER_BANNER;
+                                    exposedFaces = 0;
+                                    
+                                    boolean isWall = state.getBlock() instanceof WallBannerBlock;
+                                    if (isWall) {
+                                        exposedFaces |= 16; // Bit 4 set for Wall
+                                        // Wall Banner uses FACING (Direction)
+                                        int facing = state.getValue(WallBannerBlock.FACING).get3DDataValue();
+                                        exposedFaces |= (facing & 7);
+                                    } else {
+                                        // Standing Banner uses ROTATION (0-15)
+                                        int rot = state.getValue(BannerBlock.ROTATION);
+                                        exposedFaces |= (rot & 15);
+                                    }
+                                } else if (state.getBlock() instanceof ChestBlock) {
+                                    renderType = RENDER_CHEST;
+                                    // Pack Chest Data into exposedFaces for custom rendering
+                                    // Bits 0-1: Facing (0=NORTH, 1=SOUTH, 2=EAST, 3=WEST)
+                                    // Bits 2-3: Type (0=SINGLE, 1=LEFT, 2=RIGHT)
+                                    int facingData = 0;
+                                    switch (state.getValue(ChestBlock.FACING)) {
+                                        case NORTH: facingData = 0; break;
+                                        case SOUTH: facingData = 1; break;
+                                        case EAST: facingData = 2; break;
+                                        case WEST: facingData = 3; break;
+                                    }
+                                    
+                                    int typeData = 0;
+                                    switch (state.getValue(ChestBlock.TYPE)) {
+                                        case SINGLE: typeData = 0; break;
+                                        case LEFT: typeData = 1; break;
+                                        case RIGHT: typeData = 2; break;
+                                    }
+                                    
+                                    exposedFaces = (facingData & 0x3) | ((typeData & 0x3) << 2);
+                                } else if (state.getBlock() instanceof CraftingTableBlock) {
+                                    renderType = RENDER_CRAFTING_TABLE;
+                                } else if (state.getBlock() instanceof FurnaceBlock || state.getBlock() instanceof BlastFurnaceBlock || state.getBlock() instanceof SmokerBlock) {
+                                    renderType = RENDER_FURNACE;
+                                    // Pack Facing?
+                                } else if (state.getBlock() == Blocks.BOOKSHELF) {
+                                    renderType = RENDER_BOOKSHELF;
+                                } else if (state.getBlock() == Blocks.TNT) {
+                                    renderType = RENDER_TNT;
+                                } else if (state.getBlock() instanceof PumpkinBlock || state.getBlock() == Blocks.CARVED_PUMPKIN || state.getBlock() == Blocks.JACK_O_LANTERN) {
+                                    renderType = RENDER_PUMPKIN;
+                                } else if (state.getBlock() instanceof MelonBlock) {
+                                    renderType = RENDER_MELON;
+                                } else if (state.getBlock() instanceof EnchantmentTableBlock) {
+                                    renderType = RENDER_ENCHANTMENT_TABLE;
+                                } else if (state.getBlock() instanceof BarrelBlock) {
+                                    renderType = RENDER_BARREL;
+                                } else if (state.getBlock() instanceof WoolCarpetBlock) {
+                                    DyeColor color = ((WoolCarpetBlock) state.getBlock()).getColor();
+                                    renderType = 41 + color.getId();
+                                } else if (state.is(Blocks.MOSS_CARPET)) {
+                                    renderType = 57;
                                 }
 
 
@@ -391,8 +485,8 @@ public class ChunkScanner {
                                 // We store Y relative to minBuildHeight to save bits? 
                                 // Standard world height: -64 to 320. Range 384. Fits in 9 bits (512).
                                 int relY = worldY - minBuildHeight;
-                                // Expand renderType to 5 bits (0-31) and shift exposedFaces to 22
-                                int packed = (x & 0xF) | ((z & 0xF) << 4) | ((relY & 0x1FF) << 8) | ((renderType & 0x1F) << 17) | ((exposedFaces & 0x3F) << 22);
+                                // Expand renderType to 7 bits (0-127) and shift exposedFaces to 24
+                                int packed = (x & 0xF) | ((z & 0xF) << 4) | ((relY & 0x1FF) << 8) | ((renderType & 0x7F) << 17) | ((exposedFaces & 0x3F) << 24);
                                 
                                 positions.add(packed);
                                 
@@ -454,6 +548,8 @@ public class ChunkScanner {
                                     } else {
                                         color = 0x550000; // Dark Red
                                     }
+                                } else if (renderType == RENDER_END_ROD) {
+                                    color = 0xFFFFFF; // White
                                 } else if (renderType == RENDER_BUTTON) {
                                     // Try map color first
                                     try {
