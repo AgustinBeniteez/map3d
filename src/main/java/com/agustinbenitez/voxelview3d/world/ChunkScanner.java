@@ -48,7 +48,15 @@ import net.minecraft.world.level.block.AbstractBannerBlock;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.CraftingTableBlock;
 import net.minecraft.world.level.block.FurnaceBlock;
+import net.minecraft.world.level.block.RepeaterBlock;
+import net.minecraft.world.level.block.ComparatorBlock;
+import net.minecraft.world.level.block.state.properties.ComparatorMode;
+import net.minecraft.world.level.block.piston.PistonBaseBlock;
+import net.minecraft.world.level.block.piston.PistonHeadBlock;
+import net.minecraft.world.level.block.state.properties.PistonType;
 import net.minecraft.world.level.block.WoolCarpetBlock;
+import net.minecraft.world.level.block.BaseRailBlock;
+import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.level.block.BlastFurnaceBlock;
@@ -119,6 +127,17 @@ public class ChunkScanner {
     public static final int RENDER_MELON = 38;
     public static final int RENDER_ENCHANTMENT_TABLE = 39;
     public static final int RENDER_BARREL = 40;
+    
+    // Carpets 41-56 (mapped dynamically)
+    // 41 + 0 (White) ... 41 + 15 (Black)
+    
+    public static final int RENDER_MOSS_CARPET = 57;
+    
+    public static final int RENDER_BEACON = 60; // Moved to 60 to avoid Carpet conflict
+    public static final int RENDER_RAIL = 61;
+    public static final int RENDER_REPEATER = 62;
+    public static final int RENDER_COMPARATOR = 63;
+    public static final int RENDER_PISTON = 64;
     
     private static final Map<ChunkPos, ScannedChunk> CHUNK_DATA = new HashMap<>();
 
@@ -316,6 +335,129 @@ public class ChunkScanner {
                                     
                                     if (state.getValue(LeverBlock.POWERED)) exposedFaces |= 16; // Bit 4
                                     
+                                } else if (state.getBlock() instanceof BaseRailBlock) {
+                                    renderType = RENDER_RAIL;
+                                    BaseRailBlock rail = (BaseRailBlock) state.getBlock();
+                                    RailShape shape = state.getValue(rail.getShapeProperty());
+                                    
+                                    // Bit 0-3: Shape (0-9)
+                                    exposedFaces = shape.ordinal();
+                                    
+                                    // Bit 4: Is Redstone Rail (Powered/Detector/Activator)
+                                    boolean isRedstoneRail = false;
+                                    boolean isPowered = false;
+                                    
+                                    // Check for properties
+                                    // PoweredRailBlock, DetectorRailBlock, ActivatorRailBlock all have POWERED property?
+                                    // DetectorRailBlock has POWERED.
+                                    // PoweredRailBlock has POWERED.
+                                    // ActivatorRailBlock has POWERED.
+                                    // RailBlock (plain) does NOT have POWERED.
+                                    
+                                    if (state.hasProperty(BlockStateProperties.POWERED)) {
+                                        isRedstoneRail = true;
+                                        if (state.getValue(BlockStateProperties.POWERED)) {
+                                            isPowered = true;
+                                        }
+                                    }
+                                    
+                                    if (isRedstoneRail) {
+                                        exposedFaces |= 16; // Bit 4
+                                        if (isPowered) {
+                                            exposedFaces |= 32; // Bit 5
+                                        }
+                                    }
+
+                                } else if (state.getBlock() == Blocks.REPEATER) {
+                                    renderType = RENDER_REPEATER;
+                                    exposedFaces = 0;
+                                    
+                                    // Facing
+                                    int facing = 0;
+                                    switch(state.getValue(RepeaterBlock.FACING)) {
+                                        case SOUTH: facing = 0; break;
+                                        case WEST: facing = 1; break;
+                                        case NORTH: facing = 2; break;
+                                        case EAST: facing = 3; break;
+                                    }
+                                    exposedFaces |= (facing & 3); // Bits 0-1
+                                    
+                                    // Powered
+                                    if (state.getValue(RepeaterBlock.POWERED)) exposedFaces |= 4; // Bit 2
+                                    
+                                    // Delay (1-4) -> 0-3
+                                    int delay = state.getValue(RepeaterBlock.DELAY) - 1;
+                                    exposedFaces |= ((delay & 3) << 3); // Bits 3-4
+                                    
+                                    // Locked
+                                    if (state.getValue(RepeaterBlock.LOCKED)) exposedFaces |= 32; // Bit 5
+
+                                } else if (state.getBlock() == Blocks.COMPARATOR) {
+                                    renderType = RENDER_COMPARATOR;
+                                    exposedFaces = 0;
+                                    
+                                    // Facing
+                                    int facing = 0;
+                                    switch(state.getValue(ComparatorBlock.FACING)) {
+                                        case SOUTH: facing = 0; break;
+                                        case WEST: facing = 1; break;
+                                        case NORTH: facing = 2; break;
+                                        case EAST: facing = 3; break;
+                                    }
+                                    exposedFaces |= (facing & 3); // Bits 0-1
+                                    
+                                    // Powered
+                                    if (state.getValue(ComparatorBlock.POWERED)) exposedFaces |= 4; // Bit 2
+                                    
+                                    // Mode (Compare=0, Subtract=1)
+                                    if (state.getValue(ComparatorBlock.MODE) == ComparatorMode.SUBTRACT) exposedFaces |= 8; // Bit 3
+
+                                } else if (state.getBlock() instanceof PistonBaseBlock) {
+                                    renderType = RENDER_PISTON;
+                                    exposedFaces = 0;
+                                    
+                                    // Facing: D(0), U(1), N(2), S(3), W(4), E(5)
+                                    int facing = 0;
+                                    switch(state.getValue(BlockStateProperties.FACING)) {
+                                        case DOWN: facing = 0; break;
+                                        case UP: facing = 1; break;
+                                        case NORTH: facing = 2; break;
+                                        case SOUTH: facing = 3; break;
+                                        case WEST: facing = 4; break;
+                                        case EAST: facing = 5; break;
+                                    }
+                                    exposedFaces |= (facing & 7); // Bits 0-2
+                                    
+                                    // Sticky
+                                    if (state.getBlock() == Blocks.STICKY_PISTON) exposedFaces |= 8; // Bit 3
+                                    
+                                    // IsHead = 0 (Base)
+                                    
+                                    // Extended
+                                    if (state.getValue(BlockStateProperties.EXTENDED)) exposedFaces |= 32; // Bit 5
+
+                                } else if (state.getBlock() instanceof PistonHeadBlock) {
+                                    renderType = RENDER_PISTON;
+                                    exposedFaces = 0;
+                                    
+                                    // Facing
+                                    int facing = 0;
+                                    switch(state.getValue(BlockStateProperties.FACING)) {
+                                        case DOWN: facing = 0; break;
+                                        case UP: facing = 1; break;
+                                        case NORTH: facing = 2; break;
+                                        case SOUTH: facing = 3; break;
+                                        case WEST: facing = 4; break;
+                                        case EAST: facing = 5; break;
+                                    }
+                                    exposedFaces |= (facing & 7); // Bits 0-2
+                                    
+                                    // Sticky
+                                    if (state.getValue(BlockStateProperties.PISTON_TYPE) == PistonType.STICKY) exposedFaces |= 8; // Bit 3
+                                    
+                                    // IsHead = 1
+                                    exposedFaces |= 16; // Bit 4
+
                                 } else if (state.getBlock() instanceof RedStoneWireBlock) {
                                     renderType = RENDER_REDSTONE_WIRE;
                                     exposedFaces = 0;
@@ -470,11 +612,40 @@ public class ChunkScanner {
                                     renderType = RENDER_ENCHANTMENT_TABLE;
                                 } else if (state.getBlock() instanceof BarrelBlock) {
                                     renderType = RENDER_BARREL;
+                                } else if (state.getBlock() == Blocks.BEACON) {
+                                    // User Request: "block base con color azul" - No custom render type, just color
+                                    renderType = RENDER_BLOCK; 
                                 } else if (state.getBlock() instanceof WoolCarpetBlock) {
                                     DyeColor color = ((WoolCarpetBlock) state.getBlock()).getColor();
                                     renderType = 41 + color.getId();
                                 } else if (state.is(Blocks.MOSS_CARPET)) {
                                     renderType = 57;
+                                } else if (state.getBlock() instanceof BaseRailBlock) {
+                                    renderType = RENDER_RAIL;
+                                    BaseRailBlock rail = (BaseRailBlock) state.getBlock();
+                                    RailShape shape = state.getValue(rail.getShapeProperty());
+                                    
+                                    // Bit 0-3: Shape (0-9)
+                                    exposedFaces = shape.ordinal();
+                                    
+                                    // Bit 4: Is Redstone Rail
+                                    boolean isRedstoneRail = false;
+                                    boolean isPowered = false;
+                                    
+                                    if (state.hasProperty(BlockStateProperties.POWERED)) {
+                                        isRedstoneRail = true;
+                                        if (state.getValue(BlockStateProperties.POWERED)) {
+                                            isPowered = true;
+                                        }
+                                    }
+                                    
+                                    if (isRedstoneRail) {
+                                        exposedFaces |= 16; // Bit 4
+                                        if (isPowered) {
+                                            exposedFaces |= 32; // Bit 5
+                                        }
+                                    }
+
                                 }
 
 
@@ -592,12 +763,20 @@ public class ChunkScanner {
                                         if (color == 0) color = 0x88CCFF; // Light Blue/Cyan for clear glass
                                     }
                                 } else {
-                                    try {
-                                        color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
-                                    } catch (Exception e) {
-                                        color = 0; // Fallback
+                                        try {
+                                            color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
+                                            
+                                            // Beacon Color Override
+                                            if (state.getBlock() == Blocks.BEACON) {
+                                                color = 0x74C3E3; // Beacon Blue (Diamond-ish)
+                                            } else if (state.getBlock() instanceof BaseRailBlock) {
+                                                color = 0x8F7748; // Rail Wood/Iron Mix (Brownish Grey)
+                                            }
+                                            
+                                        } catch (Exception e) {
+                                            color = 0; // Fallback
+                                        }
                                     }
-                                }
                                 
                                 // If color is 0 (transparent/black), try to get from block default
                                 if (color == 0) {

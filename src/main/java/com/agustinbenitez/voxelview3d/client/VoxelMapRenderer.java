@@ -288,7 +288,7 @@ public class VoxelMapRenderer {
             // Unpack
             int renderType = (packed >> 17) & 0x7F;
             
-            if (renderType <= 32) continue; // Skip standard blocks and Chests (32)
+            if (renderType <= 32 || renderType == 61) continue; // Skip standard blocks (<=32) and Rails (61) which are handled in non-textured pass
             
             int x = packed & 0xF;
             int z = (packed >> 4) & 0xF;
@@ -977,7 +977,7 @@ public class VoxelMapRenderer {
             int renderType = (packed >> 17) & 0x7F; // Expanded to 7 bits
             int exposedFaces = (packed >> 24) & 0x3F; // Shifted to 24
             
-            if (renderType >= 32) continue; // Skip textured blocks (handled in textured pass)
+            if (renderType >= 32 && renderType != 61 && renderType != 62 && renderType != 63 && renderType != 64) continue; // Skip textured blocks (handled in textured pass), but allow Rails/Repeater/Comparator/Piston
             
             // If exposedFaces is 0, it might be old data OR a block with no exposed faces (fully buried).
             // But fully buried blocks shouldn't be in the list?
@@ -1050,11 +1050,16 @@ public class VoxelMapRenderer {
                 brightness *= nightFactor;
             }
 
+            // Offset for manual models to avoid z-fighting with ground
+            // User reported floor occupies a bit more height, cutting off models.
+            double mOff = 0.02; // Manual Offset (Lift everything slightly)
+            double ryOff = ry + mOff;
+
             // Render based on Type
             if (renderType == 1) { // RENDER_TORCH
                 // Small box, centered at bottom of block space
                 // Visual size: 0.2 x 0.6 x 0.2
-                renderBox(buf, pose, rx, ry - 0.2, rz, 0.2f, 0.6f, 0.2f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                renderBox(buf, pose, rx, ryOff, rz, 0.2f, 0.6f, 0.2f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
             } else if (renderType == 2) { // RENDER_LANTERN
                 // Lantern: Metal Top, Color Bottom
                 
@@ -1062,7 +1067,8 @@ public class VoxelMapRenderer {
                 // More rectangular and taller as requested.
                 // Old: ry - 0.3, Height 0.4.
                 // New: Start lower (ry - 0.4), Height 0.5. Width 0.35.
-                renderBox(buf, pose, rx, ry - 0.4, rz, 0.35f, 0.5f, 0.35f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                // Note: Lanterns hang usually, but if on floor, we want them lifted too.
+                renderBox(buf, pose, rx, ryOff, rz, 0.35f, 0.5f, 0.35f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
                 
                 // Metal Color: Dark Gray
                 float metalR = 68 / 255.0f;
@@ -1071,12 +1077,12 @@ public class VoxelMapRenderer {
 
                 // 2. Middle Metal Ring (Top Cap)
                 // Pos: ry + 0.1 (Above body). Height 0.05. Slightly wider.
-                renderBox(buf, pose, rx, ry + 0.1, rz, 0.4f, 0.05f, 0.4f, metalR * brightness, metalG * brightness, metalB * brightness, alpha);
+                renderBox(buf, pose, rx, ryOff + 0.5, rz, 0.4f, 0.05f, 0.4f, metalR * brightness, metalG * brightness, metalB * brightness, alpha);
 
                 // 3. Top Metal Handle/Box (Extra Grey Part)
                 // Pos: ry + 0.15 (Above ring). Height 0.1. Narrower.
                 // This adds the "extra grey part on top" requested.
-                renderBox(buf, pose, rx, ry + 0.15, rz, 0.2f, 0.1f, 0.2f, metalR * brightness, metalG * brightness, metalB * brightness, alpha);
+                renderBox(buf, pose, rx, ryOff + 0.55, rz, 0.2f, 0.1f, 0.2f, metalR * brightness, metalG * brightness, metalB * brightness, alpha);
                 
             } else if (renderType == 3 || renderType == 4) { // RENDER_CAVE_VINE or RENDER_CAVE_VINE_WITH_BERRIES
                 // Cave Vine Logic
@@ -1085,7 +1091,7 @@ public class VoxelMapRenderer {
                 float stemR = 89 / 255.0f;
                 float stemG = 61 / 255.0f;
                 float stemB = 41 / 255.0f;
-                renderBox(buf, pose, rx, ry, rz, 0.15f, 1.0f, 0.15f, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
+                renderBox(buf, pose, rx, ryOff, rz, 0.15f, 1.0f, 0.15f, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
 
                 // 2. Green Foliage (Outer Layer)
                 // Slightly shorter than full block to reveal stem at joints, giving a "connected" look.
@@ -1093,7 +1099,7 @@ public class VoxelMapRenderer {
                 float vineR = 92 / 255.0f;
                 float vineG = 124 / 255.0f;
                 float vineB = 53 / 255.0f;
-                renderBox(buf, pose, rx, ry + 0.1, rz, 0.45f, 0.8f, 0.45f, vineR * brightness, vineG * brightness, vineB * brightness, alpha);
+                renderBox(buf, pose, rx, ryOff + 0.1, rz, 0.45f, 0.8f, 0.45f, vineR * brightness, vineG * brightness, vineB * brightness, alpha);
                 
                 // If it has berries (Type 4), render small orange cubes
                 if (renderType == 4) {
@@ -1109,12 +1115,12 @@ public class VoxelMapRenderer {
                     // Berry 1 (Lower, Right-ish)
                     // Offset randomly to look organic.
                     // X + 0.25, Y - 0.1, Z + 0.1
-                    renderBox(buf, pose, rx + 0.25, ry - 0.1, rz + 0.1, bSize, bSize, bSize, berryR * berryBrightness, berryG * berryBrightness, berryB * berryBrightness, alpha);
+                    renderBox(buf, pose, rx + 0.25, ryOff - 0.1, rz + 0.1, bSize, bSize, bSize, berryR * berryBrightness, berryG * berryBrightness, berryB * berryBrightness, alpha);
                     
                     // Berry 2 (Higher, Left-ish)
                     // X - 0.25, Y + 0.3, Z - 0.1
                     // Staggered height and opposite side
-                    renderBox(buf, pose, rx - 0.25, ry + 0.3, rz - 0.1, bSize, bSize, bSize, berryR * berryBrightness, berryG * berryBrightness, berryB * berryBrightness, alpha);
+                    renderBox(buf, pose, rx - 0.25, ryOff + 0.3, rz - 0.1, bSize, bSize, bSize, berryR * berryBrightness, berryG * berryBrightness, berryB * berryBrightness, alpha);
                 }
 
             } else if (renderType == 5) { // RENDER_SUGAR_CANE
@@ -1143,17 +1149,17 @@ public class VoxelMapRenderer {
                       double tz = rz + off[1];
                       
                       // Main Tube
-                      renderBox(buf, pose, tx, ry, tz, tubeSize, 1.0f, tubeSize, caneR * brightness, caneG * brightness, caneB * brightness, alpha);
+                      renderBox(buf, pose, tx, ryOff, tz, tubeSize, 1.0f, tubeSize, caneR * brightness, caneG * brightness, caneB * brightness, alpha);
                       
                       // Borders
                       // West
-                      renderBox(buf, pose, tx - tubeSize/2 - bThick/2, ry, tz, bThick, 1.0f, tubeSize + 2*bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
+                      renderBox(buf, pose, tx - tubeSize/2 - bThick/2, ryOff, tz, bThick, 1.0f, tubeSize + 2*bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
                       // East
-                      renderBox(buf, pose, tx + tubeSize/2 + bThick/2, ry, tz, bThick, 1.0f, tubeSize + 2*bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
+                      renderBox(buf, pose, tx + tubeSize/2 + bThick/2, ryOff, tz, bThick, 1.0f, tubeSize + 2*bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
                       // North (Between W/E)
-                      renderBox(buf, pose, tx, ry, tz - tubeSize/2 - bThick/2, tubeSize, 1.0f, bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
+                      renderBox(buf, pose, tx, ryOff, tz - tubeSize/2 - bThick/2, tubeSize, 1.0f, bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
                       // South (Between W/E)
-                      renderBox(buf, pose, tx, ry, tz + tubeSize/2 + bThick/2, tubeSize, 1.0f, bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
+                      renderBox(buf, pose, tx, ryOff, tz + tubeSize/2 + bThick/2, tubeSize, 1.0f, bThick, bR * brightness, bG * brightness, bB * brightness, alpha);
                   }
                   
              } else if (renderType == 6) { // RENDER_CACTUS
@@ -1166,7 +1172,7 @@ public class VoxelMapRenderer {
                  float baseG = (g * brightness) / 255.0f;
                  float baseB = (b * brightness) / 255.0f;
                  
-                 renderBox(buf, pose, rx, ry, rz, bodySize, 1.0f, bodySize, baseR, baseG, baseB, alpha);
+                 renderBox(buf, pose, rx, ryOff, rz, bodySize, 1.0f, bodySize, baseR, baseG, baseB, alpha);
                  
                  // Vertical Dark Stripes (Ribs)
                  // Darker green: Multiply by 0.6
@@ -1179,20 +1185,20 @@ public class VoxelMapRenderer {
                  float sOff = bodySize / 2.0f + (sD / 2.0f); // Slightly outside
                  
                  // Z- Face
-                 renderBox(buf, pose, rx - 0.2, ry, rz - sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
-                 renderBox(buf, pose, rx + 0.2, ry, rz - sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx - 0.2, ryOff, rz - sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx + 0.2, ryOff, rz - sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
                  
                  // Z+ Face
-                 renderBox(buf, pose, rx - 0.2, ry, rz + sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
-                 renderBox(buf, pose, rx + 0.2, ry, rz + sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx - 0.2, ryOff, rz + sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx + 0.2, ryOff, rz + sOff, sW, 1.0f, sD, stripeR, stripeG, stripeB, alpha);
                  
                  // X- Face (Rotated)
-                 renderBox(buf, pose, rx - sOff, ry, rz - 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
-                 renderBox(buf, pose, rx - sOff, ry, rz + 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx - sOff, ryOff, rz - 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx - sOff, ryOff, rz + 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
                  
                  // X+ Face (Rotated)
-                 renderBox(buf, pose, rx + sOff, ry, rz - 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
-                 renderBox(buf, pose, rx + sOff, ry, rz + 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx + sOff, ryOff, rz - 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
+                 renderBox(buf, pose, rx + sOff, ryOff, rz + 0.2, sD, 1.0f, sW, stripeR, stripeG, stripeB, alpha);
 
                  // Spines (Thorns)
                  float spineLen = 0.1f;
@@ -1204,20 +1210,20 @@ public class VoxelMapRenderer {
                  float offset = bodySize / 2.0f; 
                  
                  // Face 1 (Z-): 2 Spines (Centered between stripes)
-                 renderBox(buf, pose, rx, ry + 0.25, rz - offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
-                 renderBox(buf, pose, rx, ry - 0.25, rz - offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
+                renderBox(buf, pose, rx, ryOff + 0.75, rz - offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
+                renderBox(buf, pose, rx, ryOff + 0.25, rz - offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
 
-                 // Face 2 (Z+): 2 Spines
-                 renderBox(buf, pose, rx, ry + 0.25, rz + offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
-                 renderBox(buf, pose, rx, ry - 0.25, rz + offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
+                // Face 2 (Z+): 2 Spines
+                renderBox(buf, pose, rx, ryOff + 0.75, rz + offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
+                renderBox(buf, pose, rx, ryOff + 0.25, rz + offset, spineThick, spineThick, spineLen, spineR, spineG, spineB, alpha);
 
-                 // Face 3 (X-): 2 Spines
-                 renderBox(buf, pose, rx - offset, ry + 0.25, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
-                 renderBox(buf, pose, rx - offset, ry - 0.25, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
+                // Face 3 (X-): 2 Spines
+                renderBox(buf, pose, rx - offset, ryOff + 0.75, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
+                renderBox(buf, pose, rx - offset, ryOff + 0.25, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
 
-                 // Face 4 (X+): 2 Spines
-                 renderBox(buf, pose, rx + offset, ry + 0.25, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
-                  renderBox(buf, pose, rx + offset, ry - 0.25, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
+                // Face 4 (X+): 2 Spines
+                renderBox(buf, pose, rx + offset, ryOff + 0.75, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
+                renderBox(buf, pose, rx + offset, ryOff + 0.25, rz, spineLen, spineThick, spineThick, spineR, spineG, spineB, alpha);
  
              } else if (renderType == 7) { // RENDER_SAPLING
                 // Sapling: Small Brown Block (0.4x0.4x0.4)
@@ -1228,9 +1234,9 @@ public class VoxelMapRenderer {
                 float woodB = 40 / 255.0f;
                 
                 // Position: Bottom Center
-                // rx, ry, rz is block center.
-                // To put on floor (y-0.5), we need center at (y-0.5) + (sSize/2) = y - 0.5 + 0.2 = y - 0.3
-                 renderBox(buf, pose, rx, ry - 0.3, rz, sSize, sSize, sSize, woodR * brightness, woodG * brightness, woodB * brightness, alpha);
+               // rx, ry, rz is block center.
+               // To put on floor (y-0.5), we need center at (y-0.5) + (sSize/2) = y - 0.5 + 0.2 = y - 0.3
+                renderBox(buf, pose, rx, ryOff, rz, sSize, sSize, sSize, woodR * brightness, woodG * brightness, woodB * brightness, alpha);
                   
               } else if (renderType == 8) { // RENDER_BAMBOO
                  // Bamboo: Single Green Tube, varying thickness but usually thin
@@ -1242,7 +1248,7 @@ public class VoxelMapRenderer {
                  float bamB = 60 / 255.0f;
                  
                  // Render Stalk (Full Height)
-                 renderBox(buf, pose, rx, ry, rz, bambooSize, 1.0f, bambooSize, bamR * brightness, bamG * brightness, bamB * brightness, alpha);
+                 renderBox(buf, pose, rx, ryOff, rz, bambooSize, 1.0f, bambooSize, bamR * brightness, bamG * brightness, bamB * brightness, alpha);
                  
                  // Add small leaves? (Optional, maybe later if requested)
                  // For now just the "tube upwards" as requested.
@@ -1257,14 +1263,14 @@ public class VoxelMapRenderer {
                  float potHeight = 0.3f;
                  
                  // Center Y for Pot: Bottom (-0.5) + Half Height (0.15) = -0.35
-                 renderBox(buf, pose, rx, ry - 0.35, rz, potSize, potHeight, potSize, potR * brightness, potG * brightness, potB * brightness, alpha);
+                 renderBox(buf, pose, rx, ryOff, rz, potSize, potHeight, potSize, potR * brightness, potG * brightness, potB * brightness, alpha);
                  
                  // 2. Plant Inside: Small Block with Specific Color
                  // Use the passed r, g, b values which come from ChunkScanner's getPottedPlantColor
                  float plantSize = 0.25f;
                  
                  // Center Y for Plant: Top of Pot (-0.2) + Half Plant (0.125) = -0.075
-                renderBox(buf, pose, rx, ry - 0.075, rz, plantSize, plantSize, plantSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                renderBox(buf, pose, rx, ryOff + potHeight, rz, plantSize, plantSize, plantSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
 
              } else if (renderType == 10) { // RENDER_FLOWER_POT
                  // Empty Flower Pot
@@ -1276,13 +1282,13 @@ public class VoxelMapRenderer {
                  float potHeight = 0.375f; // Exact MC height
                  
                  // Center Y for Pot: Bottom (-0.5) + Half Height (0.1875) = -0.3125
-                 renderBox(buf, pose, rx, ry - 0.3125, rz, potSize, potHeight, potSize, potR * brightness, potG * brightness, potB * brightness, alpha);
+                 renderBox(buf, pose, rx, ryOff, rz, potSize, potHeight, potSize, potR * brightness, potG * brightness, potB * brightness, alpha);
 
                  // Pot "Hole" (Dark Top)
                  float holeSize = 0.25f; // Smaller than pot
                  float holeHeight = 0.02f; // Very thin
                  // On top of pot: Bottom (-0.5) + Height (0.375) + Half Hole (0.01) = -0.115
-                 renderBox(buf, pose, rx, ry - 0.115, rz, holeSize, holeHeight, holeSize, 0.2f * brightness, 0.1f * brightness, 0.1f * brightness, alpha);
+                 renderBox(buf, pose, rx, ryOff + potHeight, rz, holeSize, holeHeight, holeSize, 0.2f * brightness, 0.1f * brightness, 0.1f * brightness, alpha);
                  
               } else if (renderType == 11) { // RENDER_GRASS
                  // Grass/Fern: Render as multiple small blades/tufts to give "relief"
@@ -1292,13 +1298,13 @@ public class VoxelMapRenderer {
                  float bladeH = 0.45f; // Short grass height
                  
                  // Blade 1 (Left-Back)
-                renderBox(buf, pose, rx - 0.2, ry, rz - 0.2, bladeW, bladeH, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                renderBox(buf, pose, rx - 0.2, ryOff, rz - 0.2, bladeW, bladeH, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
                 // Blade 2 (Right-Front)
-                renderBox(buf, pose, rx + 0.2, ry, rz + 0.2, bladeW, bladeH * 0.8f, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                renderBox(buf, pose, rx + 0.2, ryOff, rz + 0.2, bladeW, bladeH * 0.8f, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
                 // Blade 3 (Left-Front)
-                renderBox(buf, pose, rx - 0.15, ry, rz + 0.15, bladeW, bladeH * 0.9f, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                renderBox(buf, pose, rx - 0.15, ryOff, rz + 0.15, bladeW, bladeH * 0.9f, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
                 // Blade 4 (Right-Back)
-                renderBox(buf, pose, rx + 0.1, ry, rz - 0.1, bladeW, bladeH * 1.1f, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                renderBox(buf, pose, rx + 0.1, ryOff, rz - 0.1, bladeW, bladeH * 1.1f, bladeW, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
 
              } else if (renderType == 12) { // RENDER_FLOWER
                  // Small Flower: Stem + Head
@@ -1310,12 +1316,12 @@ public class VoxelMapRenderer {
                  float stemH = 0.4f;
                  
                  // Render Stem (Bottom)
-                 renderBox(buf, pose, rx, ry - 0.5 + (stemH/2), rz, stemW, stemH, stemW, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
+                 renderBox(buf, pose, rx, ryOff, rz, stemW, stemH, stemW, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
                  
                  // Render Flower Head (Color passed in r,g,b)
                  float headSize = 0.25f;
                  // On top of stem
-                 renderBox(buf, pose, rx, ry - 0.5 + stemH + (headSize/2), rz, headSize, headSize, headSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 renderBox(buf, pose, rx, ryOff + stemH, rz, headSize, headSize, headSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
                  
              } else if (renderType == 13) { // RENDER_TALL_FLOWER
                  // Tall Flower (Lilac, Rose Bush, etc.)
@@ -1325,19 +1331,19 @@ public class VoxelMapRenderer {
                  float stemB = 50 / 255.0f;
                  float stemW = 0.15f;
                  
-                 renderBox(buf, pose, rx, ry, rz, stemW, 1.0f, stemW, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
+                 renderBox(buf, pose, rx, ryOff, rz, stemW, 1.0f, stemW, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
                  
                  // Flower/Foliage Clusters
                  float bushSize = 0.5f;
                  
                  // Main Cluster
-                 renderBox(buf, pose, rx, ry, rz, bushSize, 0.8f, bushSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 renderBox(buf, pose, rx, ryOff, rz, bushSize, 0.8f, bushSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
                  
                  // Add relief/texture
                  float off = 0.2f;
                  float smallSize = 0.25f;
-                 renderBox(buf, pose, rx + off, ry + 0.2, rz + off, smallSize, smallSize, smallSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
-                 renderBox(buf, pose, rx - off, ry - 0.2, rz - off, smallSize, smallSize, smallSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 renderBox(buf, pose, rx + off, ryOff + 0.2, rz + off, smallSize, smallSize, smallSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 renderBox(buf, pose, rx - off, ryOff - 0.2, rz - off, smallSize, smallSize, smallSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
 
              } else if (renderType == 14) { // RENDER_MUSHROOM
                  // Stem: White/Off-white
@@ -1348,14 +1354,14 @@ public class VoxelMapRenderer {
                  float stemH = 0.2f;
                  
                  // Stem Position: Bottom (-0.5) + Half Height (0.1) = -0.4
-                 renderBox(buf, pose, rx, ry - 0.4, rz, stemW, stemH, stemW, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
+                 renderBox(buf, pose, rx, ryOff, rz, stemW, stemH, stemW, stemR * brightness, stemG * brightness, stemB * brightness, alpha);
                  
                  // Cap: Uses color passed in r,g,b
                  float capSize = 0.4f;
                  float capH = 0.2f;
                  
                  // Cap Position: On top of stem (-0.5 + 0.2 + 0.1) = -0.2
-                 renderBox(buf, pose, rx, ry - 0.2, rz, capSize, capH, capSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 renderBox(buf, pose, rx, ryOff + stemH, rz, capSize, capH, capSize, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
                  
                  // Add white spots for Red Mushroom if color is Red-ish
                  if (r > 200 && g < 50 && b < 50) {
@@ -1363,7 +1369,7 @@ public class VoxelMapRenderer {
                      float spotSize = 0.1f;
                      float spotH = 0.02f;
                      // Top center spot
-                     renderBox(buf, pose, rx, ry - 0.1 + 0.02, rz, spotSize, spotH, spotSize, 1.0f * brightness, 1.0f * brightness, 1.0f * brightness, alpha);
+                     renderBox(buf, pose, rx, ryOff + stemH + (capH/2) + (spotH/2), rz, spotSize, spotH, spotSize, 1.0f * brightness, 1.0f * brightness, 1.0f * brightness, alpha);
                  }
 
              } else if (renderType == 15) { // RENDER_GLOW_LICHEN
@@ -1378,22 +1384,22 @@ public class VoxelMapRenderer {
                  float lBri = Math.max(brightness, 0.9f);
 
                  if ((exposedFaces & 1) != 0) { // West
-                     renderBox(buf, pose, rx - offset, ry, rz, thick, size, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                     renderBox(buf, pose, rx - offset, ryOff, rz, thick, size, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
                  }
                  if ((exposedFaces & 2) != 0) { // East
-                     renderBox(buf, pose, rx + offset, ry, rz, thick, size, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                     renderBox(buf, pose, rx + offset, ryOff, rz, thick, size, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
                  }
                  if ((exposedFaces & 4) != 0) { // Down
-                     renderBox(buf, pose, rx, ry - offset, rz, size, thick, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                     renderBox(buf, pose, rx, ryOff - offset, rz, size, thick, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
                  }
                  if ((exposedFaces & 8) != 0) { // Up
-                     renderBox(buf, pose, rx, ry + offset, rz, size, thick, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                     renderBox(buf, pose, rx, ryOff + offset, rz, size, thick, size, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
                  }
                  if ((exposedFaces & 16) != 0) { // North
-                     renderBox(buf, pose, rx, ry, rz - offset, size, size, thick, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                     renderBox(buf, pose, rx, ryOff, rz - offset, size, size, thick, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
                  }
                  if ((exposedFaces & 32) != 0) { // South
-                     renderBox(buf, pose, rx, ry, rz + offset, size, size, thick, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
+                     renderBox(buf, pose, rx, ryOff, rz + offset, size, size, thick, (r * lBri) / 255.0f, (g * lBri) / 255.0f, (b * lBri) / 255.0f, alpha);
                  }
 
              } else if (renderType == 16) { // RENDER_VINE
@@ -1402,12 +1408,12 @@ public class VoxelMapRenderer {
                  float size = 1.0f;
                  float offset = 0.5f - (thick / 2.0f);
 
-                 if ((exposedFaces & 1) != 0) renderBox(buf, pose, rx - offset, ry, rz, thick, size, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
-                 if ((exposedFaces & 2) != 0) renderBox(buf, pose, rx + offset, ry, rz, thick, size, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
-                 if ((exposedFaces & 4) != 0) renderBox(buf, pose, rx, ry - offset, rz, size, thick, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
-                 if ((exposedFaces & 8) != 0) renderBox(buf, pose, rx, ry + offset, rz, size, thick, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
-                 if ((exposedFaces & 16) != 0) renderBox(buf, pose, rx, ry, rz - offset, size, size, thick, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
-                if ((exposedFaces & 32) != 0) renderBox(buf, pose, rx, ry, rz + offset, size, size, thick, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 if ((exposedFaces & 1) != 0) renderBox(buf, pose, rx - offset, ryOff, rz, thick, size, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 if ((exposedFaces & 2) != 0) renderBox(buf, pose, rx + offset, ryOff, rz, thick, size, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 if ((exposedFaces & 4) != 0) renderBox(buf, pose, rx, ryOff - offset, rz, size, thick, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 if ((exposedFaces & 8) != 0) renderBox(buf, pose, rx, ryOff + offset, rz, size, thick, size, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                 if ((exposedFaces & 16) != 0) renderBox(buf, pose, rx, ryOff, rz - offset, size, size, thick, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+                if ((exposedFaces & 32) != 0) renderBox(buf, pose, rx, ryOff, rz + offset, size, size, thick, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
 
             } else if (renderType == 17) { // RENDER_FIRE
                 // Fire: 3 distinct flame pillars simulating 3D fire
@@ -1421,15 +1427,15 @@ public class VoxelMapRenderer {
 
                 // Center flame (Tallest)
                 // Height 0.8, Y-center = Bottom(-0.5) + 0.4 = -0.1
-                renderBox(buf, pose, rx, ry - 0.1, rz, flameW, 0.8f, flameW, fR, fG, fB, alpha);
+                renderBox(buf, pose, rx, ryOff - 0.1, rz, flameW, 0.8f, flameW, fR, fG, fB, alpha);
                 
                 // Side flame 1 (Left-ish)
                 // Height 0.6, Y-center = Bottom(-0.5) + 0.3 = -0.2
-                renderBox(buf, pose, rx - 0.2, ry - 0.2, rz + 0.1, flameW, 0.6f, flameW, fR, fG, fB, alpha);
+                renderBox(buf, pose, rx - 0.2, ryOff - 0.2, rz + 0.1, flameW, 0.6f, flameW, fR, fG, fB, alpha);
                 
                 // Side flame 2 (Right-ish)
                 // Height 0.5, Y-center = Bottom(-0.5) + 0.25 = -0.25
-                renderBox(buf, pose, rx + 0.15, ry - 0.25, rz - 0.15, flameW, 0.5f, flameW, fR, fG, fB, alpha);
+                renderBox(buf, pose, rx + 0.15, ryOff - 0.25, rz - 0.15, flameW, 0.5f, flameW, fR, fG, fB, alpha);
 
             } else if (renderType == 18) { // RENDER_REDSTONE_LAMP
                 // Framed Lamp
@@ -1513,10 +1519,10 @@ public class VoxelMapRenderer {
                 
                 if (isZAligned) {
                     // Render along Z axis
-                    renderBox(buf, pose, rx, ry, rz, th, 1.0f, 1.0f, dR, dG, dB, alpha);
+                    renderBox(buf, pose, rx, ryOff, rz, th, 1.0f, 1.0f, dR, dG, dB, alpha);
                 } else {
                     // Render along X axis
-                    renderBox(buf, pose, rx, ry, rz, 1.0f, 1.0f, th, dR, dG, dB, alpha);
+                    renderBox(buf, pose, rx, ryOff, rz, 1.0f, 1.0f, th, dR, dG, dB, alpha);
                 }
 
             } else if (renderType == 20) { // RENDER_BUTTON
@@ -1553,7 +1559,7 @@ public class VoxelMapRenderer {
                 
                 if (face == 0) { // Floor
                     // On bottom face, Y shifted up slightly
-                    by = ry - 0.5 + (bH / 2.0);
+                    by = ryOff;
                     // Facing controls rotation (Width vs Depth alignment)
                     // If Facing=North/South, Width is along X.
                     // If Facing=West/East, Width is along Z.
@@ -1564,7 +1570,7 @@ public class VoxelMapRenderer {
                     }
                 } else if (face == 2) { // Ceiling
                     // On top face, Y shifted down
-                    by = ry + 0.5 - (bH / 2.0);
+                    by = ryOff + 1.0 - bH;
                     if (facing == 1 || facing == 3) { // West/East
                          renderBox(buf, pose, bx, by, bz, bD, bH, bW, bR, bG, bB, alpha);
                     } else {
@@ -1573,6 +1579,7 @@ public class VoxelMapRenderer {
                 } else { // Wall
                     // Attached to side face.
                     // Facing is Direction button points OUT.
+                    by = ryOff + 0.5 - (bD / 2.0); // Center on wall
                     // North(2) -> Points North (Z-). Attached to South Face (Z=Max).
                     // Wait, standard Facing property logic:
                     // Facing=NORTH means "Button's front is North". Back is South. Attached to block at South?
@@ -1645,7 +1652,7 @@ public class VoxelMapRenderer {
                 float stateOffset = powered ? -0.2f : 0.2f; 
                 
                 if (face == 0) { // Floor
-                    ly = ry - 0.5 + (baseTh / 2.0);
+                    ly = ryOff;
                     // Base
                     if (facing == 1 || facing == 3) {
                         renderBox(buf, pose, lx, ly, lz, baseL, baseTh, baseW, cobbleR, cobbleG, cobbleB, alpha);
@@ -1664,7 +1671,7 @@ public class VoxelMapRenderer {
                     }
                     
                 } else if (face == 2) { // Ceiling
-                    ly = ry + 0.5 - (baseTh / 2.0);
+                    ly = ryOff + 1.0 - baseTh;
                     if (facing == 1 || facing == 3) {
                         renderBox(buf, pose, lx, ly, lz, baseL, baseTh, baseW, cobbleR, cobbleG, cobbleB, alpha);
                         float dir = (facing == 1) ? 1.0f : -1.0f;
@@ -1676,6 +1683,7 @@ public class VoxelMapRenderer {
                     }
                     
                 } else { // Wall
+                    ly = ryOff + 0.5 - (baseTh / 2.0); // Center on wall
                     float offset = 0.5f - (baseTh / 2.0f);
                     
                     // Wall levers toggle Up/Down usually.
@@ -1705,40 +1713,51 @@ public class VoxelMapRenderer {
                 boolean cE = (exposedFaces & 4) != 0;
                 boolean cW = (exposedFaces & 8) != 0;
                 
-                // Color: Red (passed in)
-                float rR = (r * brightness) / 255.0f;
-                float rG = (g * brightness) / 255.0f;
-                float rB = (b * brightness) / 255.0f;
+                // Determine Power State based on Color (Dark Red vs Bright Red)
+                // Unpowered: ~85 (0x55), Powered: ~255 (0xFF)
+                boolean isPowered = r > 150;
                 
-                // Height: Flat on floor, but cable-like
-                float wireTh = 0.125f; // 2 pixels thick (Cable)
-                float wireW = 0.125f; // 2 pixels wide
-                double wireY = ry - 0.5 + (wireTh / 2.0); // Centered vertically based on thickness
+                // Lighting: If powered, use full brightness (Glow).
+                float useBrightness = isPowered ? 1.0f : brightness;
+                
+                // Color: Red (passed in)
+                float rR = (r * useBrightness) / 255.0f;
+                float rG = (g * useBrightness) / 255.0f;
+                float rB = (b * useBrightness) / 255.0f;
+                
+                // Height: Flat dust
+                float wireTh = 0.0625f; // 1 pixel thick (Dust)
+                float wireW = 0.25f;    // 4 pixels wide (Standard Dust width)
+                // Correctly place wire on floor (ryOff)
+                // ry is Bottom Y. ryOff is Bottom Y + 0.02.
+                // renderBox takes minY. So we pass ryOff.
+                double wireY = ryOff; 
 
                 // Center Dot/Square
-                // User said: "if single, can be a square"
+                renderBox(buf, pose, rx, wireY, rz, wireW, wireTh, wireW, rR, rG, rB, alpha);
                 
                 boolean isSingle = !cN && !cS && !cE && !cW;
                 
+                // Arms
+                // Center box is +/- wireW/2 = 0.125.
+                // Distance to edge is 0.5 - 0.125 = 0.375.
+                float fullArmL = 0.375f;
+                float shortArmL = 0.1875f; // Half-way to edge (3 pixels)
+                
+                float armOffset = 0.125f + (fullArmL / 2.0f); // Center of full arm
+                float shortArmOffset = 0.125f + (shortArmL / 2.0f); // Center of short arm
+                
                 if (isSingle) {
-                    // Render single square (dot)
-                    renderBox(buf, pose, rx, wireY, rz, wireW, wireTh, wireW, rR, rG, rB, alpha);
+                    // Render Cross (4 short arms)
+                    renderBox(buf, pose, rx, wireY, rz - shortArmOffset, wireW, wireTh, shortArmL, rR, rG, rB, alpha);
+                    renderBox(buf, pose, rx, wireY, rz + shortArmOffset, wireW, wireTh, shortArmL, rR, rG, rB, alpha);
+                    renderBox(buf, pose, rx + shortArmOffset, wireY, rz, shortArmL, wireTh, wireW, rR, rG, rB, alpha);
+                    renderBox(buf, pose, rx - shortArmOffset, wireY, rz, shortArmL, wireTh, wireW, rR, rG, rB, alpha);
                 } else {
-                    // Center
-                    renderBox(buf, pose, rx, wireY, rz, wireW, wireTh, wireW, rR, rG, rB, alpha);
-                    
-                    // Arms
-                    // Arm length: Center(0) to Edge(0.5).
-                    // Center box is +/- wireW/2 = 0.0625.
-                    // Arm Length = 0.5 - 0.0625 = 0.4375.
-                    // Arm Center = 0.0625 + (0.4375 / 2.0) = 0.28125.
-                    float armL = 0.4375f;
-                    float armOffset = 0.28125f;
-                    
-                    if (cN) renderBox(buf, pose, rx, wireY, rz - armOffset, wireW, wireTh, armL, rR, rG, rB, alpha);
-                    if (cS) renderBox(buf, pose, rx, wireY, rz + armOffset, wireW, wireTh, armL, rR, rG, rB, alpha);
-                    if (cE) renderBox(buf, pose, rx + armOffset, wireY, rz, armL, wireTh, wireW, rR, rG, rB, alpha);
-                    if (cW) renderBox(buf, pose, rx - armOffset, wireY, rz, armL, wireTh, wireW, rR, rG, rB, alpha);
+                    if (cN) renderBox(buf, pose, rx, wireY, rz - armOffset, wireW, wireTh, fullArmL, rR, rG, rB, alpha);
+                    if (cS) renderBox(buf, pose, rx, wireY, rz + armOffset, wireW, wireTh, fullArmL, rR, rG, rB, alpha);
+                    if (cE) renderBox(buf, pose, rx + armOffset, wireY, rz, fullArmL, wireTh, wireW, rR, rG, rB, alpha);
+                    if (cW) renderBox(buf, pose, rx - armOffset, wireY, rz, fullArmL, wireTh, wireW, rR, rG, rB, alpha);
                 }
 
             } else if (renderType == 23) { // RENDER_IRON_BARS
@@ -1760,34 +1779,43 @@ public class VoxelMapRenderer {
                 // Determine orientation
                 // NS: Connected N/S but not E/W (Straight wall N-S)
                 // EW: Connected E/W but not N/S (Straight wall E-W)
-                // Cross: Everything else (Isolated, Corners, Intersections)
+                // Cross: Everything else (Corners, Intersections) - EXCLUDING Isolated
+                
+                boolean isIsolated = !cN && !cS && !cE && !cW;
                 boolean isNS = (cN || cS) && !(cE || cW);
                 boolean isEW = (cE || cW) && !(cN || cS);
-                boolean hasXSpread = isNS || (!isNS && !isEW); // Spread along X (for N-S walls or Cross)
-                boolean hasZSpread = isEW || (!isNS && !isEW); // Spread along Z (for E-W walls or Cross)
+                
+                // Only spread if NOT isolated.
+                // If isolated, we want ONLY the center post.
+                // Logic: Spread if (NS OR Cross/Corner) AND Not Isolated.
+                // Cross/Corner is (!isNS && !isEW).
+                
+                boolean hasXSpread = !isIsolated && (isNS || (!isNS && !isEW)); // Spread along X
+                boolean hasZSpread = !isIsolated && (isEW || (!isNS && !isEW)); // Spread along Z
                 
                 // 1. Vertical Bars
                 // Center Bar (Always)
-                renderBox(buf, pose, rx, ry, rz, th, 1.0f, th, iR, iG, iB, alpha);
+                renderBox(buf, pose, rx, ryOff, rz, th, 1.0f, th, iR, iG, iB, alpha);
                 
                 // Side Bars
                 if (hasXSpread) {
-                    renderBox(buf, pose, rx - spread, ry, rz, th, 1.0f, th, iR, iG, iB, alpha);
-                    renderBox(buf, pose, rx + spread, ry, rz, th, 1.0f, th, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx - spread, ryOff, rz, th, 1.0f, th, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx + spread, ryOff, rz, th, 1.0f, th, iR, iG, iB, alpha);
                 }
                 if (hasZSpread) {
-                    renderBox(buf, pose, rx, ry, rz - spread, th, 1.0f, th, iR, iG, iB, alpha);
-                    renderBox(buf, pose, rx, ry, rz + spread, th, 1.0f, th, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, ryOff, rz - spread, th, 1.0f, th, iR, iG, iB, alpha);
+                    renderBox(buf, pose, rx, ryOff, rz + spread, th, 1.0f, th, iR, iG, iB, alpha);
                 }
                 
                 // 2. Horizontal Rails (Top, Middle, Bottom)
                 // To connect the bars and the neighbors
-                float railY1 = (float) (ry + 0.375); // Top rail
-                float railY2 = (float) (ry - 0.375); // Bottom rail
-                float railY3 = (float) ry;           // Middle rail
+                float railY1 = (float) (ryOff + 0.85); // Top rail
+                float railY2 = (float) (ryOff + 0.15); // Bottom rail
+                float railY3 = (float) (ryOff + 0.5);  // Middle rail
                 float railH = th;
                 
                 // Hub Rails (Connecting internal bars)
+                // Only render Hub Rails if we have some spread (not isolated)
                 if (hasXSpread) {
                     float w = spread * 2.0f + th;
                     renderBox(buf, pose, rx, railY1, rz, w, railH, th, iR, iG, iB, alpha);
@@ -1802,6 +1830,8 @@ public class VoxelMapRenderer {
                 }
                 
                 // Arm Rails (Connecting to neighbors)
+                // Only render arms if connected in that direction
+                
                 // Start from the edge of the hub area to the block edge
                 float edge = spread + th / 2.0f; 
                 float armL = 0.5f - edge; 
@@ -1849,14 +1879,14 @@ public class VoxelMapRenderer {
                 // Post: 4x4 pixels -> 0.25f
                 float postTh = 0.25f;
                 
-                renderBox(buf, pose, rx, ry, rz, postTh, 1.0f, postTh, fR, fG, fB, alpha);
+                renderBox(buf, pose, rx, ryOff, rz, postTh, 1.0f, postTh, fR, fG, fB, alpha);
                 
                 // Rails
                 float railTh = 0.125f;
                 float railH = 0.1875f; // 3 pixels high
                 
-                double rY1 = ry + 0.25; // Upper rail center
-                double rY2 = ry - 0.15; // Lower rail center
+                double rY1 = ryOff + 0.75; // Upper rail center
+                double rY2 = ryOff + 0.375; // Lower rail center
                 
                 // Arm Length: Center(0) to Edge(0.5) - PostHalf(0.125) = 0.375
                 float armL = 0.375f;
@@ -1890,11 +1920,11 @@ public class VoxelMapRenderer {
                 float sB = (b * brightness) / 255.0f;
                 
                 // Base Slab (Always present)
-                double baseY = isTop ? ry + 0.25 : ry - 0.25;
+                double baseY = isTop ? ryOff + 0.5 : ryOff;
                 renderBoxWithOutlines(buf, pose, rx, baseY, rz, 1.0f, 0.5f, 1.0f, sR, sG, sB, alpha);
                 
                 // Step Layer
-                double stepY = isTop ? ry - 0.25 : ry + 0.25;
+                double stepY = isTop ? ryOff : ryOff + 0.5;
                 
                 // Determine which quarters to render
                 // 0:NW, 1:NE, 2:SW, 3:SE
@@ -1979,11 +2009,11 @@ public class VoxelMapRenderer {
                  float sB = (b * brightness) / 255.0f;
                  
                  if (type == 2) { // Double
-                     renderBoxWithOutlines(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, sR, sG, sB, alpha);
+                     renderBoxWithOutlines(buf, pose, rx, ryOff, rz, 1.0f, 1.0f, 1.0f, sR, sG, sB, alpha);
                  } else if (type == 1) { // Top
-                     renderBoxWithOutlines(buf, pose, rx, ry + 0.25, rz, 1.0f, 0.5f, 1.0f, sR, sG, sB, alpha);
+                     renderBoxWithOutlines(buf, pose, rx, ryOff + 0.5, rz, 1.0f, 0.5f, 1.0f, sR, sG, sB, alpha);
                  } else { // Bottom
-                     renderBoxWithOutlines(buf, pose, rx, ry - 0.25, rz, 1.0f, 0.5f, 1.0f, sR, sG, sB, alpha);
+                     renderBoxWithOutlines(buf, pose, rx, ryOff, rz, 1.0f, 0.5f, 1.0f, sR, sG, sB, alpha);
                  }
             } else if (renderType == 27) { // RENDER_TRAPDOOR
                  // Unpack
@@ -2003,13 +2033,13 @@ public class VoxelMapRenderer {
                      
                      if (facing == 2) { // North (Attached to Z-)
                          // Position: Z = rz - 0.5 + th/2
-                         renderBox(buf, pose, rx, ry, rz - 0.5 + (th/2.0), 1.0f, 1.0f, th, tR, tG, tB, alpha);
+                         renderBox(buf, pose, rx, ryOff, rz - 0.5 + (th/2.0), 1.0f, 1.0f, th, tR, tG, tB, alpha);
                      } else if (facing == 0) { // South (Attached to Z+)
-                         renderBox(buf, pose, rx, ry, rz + 0.5 - (th/2.0), 1.0f, 1.0f, th, tR, tG, tB, alpha);
+                         renderBox(buf, pose, rx, ryOff, rz + 0.5 - (th/2.0), 1.0f, 1.0f, th, tR, tG, tB, alpha);
                      } else if (facing == 1) { // West (Attached to X-)
-                         renderBox(buf, pose, rx - 0.5 + (th/2.0), ry, rz, th, 1.0f, 1.0f, tR, tG, tB, alpha);
+                         renderBox(buf, pose, rx - 0.5 + (th/2.0), ryOff, rz, th, 1.0f, 1.0f, tR, tG, tB, alpha);
                      } else if (facing == 3) { // East (Attached to X+)
-                         renderBox(buf, pose, rx + 0.5 - (th/2.0), ry, rz, th, 1.0f, 1.0f, tR, tG, tB, alpha);
+                         renderBox(buf, pose, rx + 0.5 - (th/2.0), ryOff, rz, th, 1.0f, 1.0f, tR, tG, tB, alpha);
                      }
                  } else {
                      // Closed (Horizontal)
@@ -2018,11 +2048,11 @@ public class VoxelMapRenderer {
                      if (isTop) {
                          // Top part of block space
                          // Center Y = ry + 0.5 - th/2
-                         renderBox(buf, pose, rx, ry + 0.5 - (th/2.0), rz, 1.0f, th, 1.0f, tR, tG, tB, alpha);
+                         renderBox(buf, pose, rx, ryOff + 1.0 - th, rz, 1.0f, th, 1.0f, tR, tG, tB, alpha);
                      } else {
                         // Bottom part
                         // Center Y = ry - 0.5 + th/2
-                        renderBox(buf, pose, rx, ry - 0.5 + (th/2.0), rz, 1.0f, th, 1.0f, tR, tG, tB, alpha);
+                        renderBox(buf, pose, rx, ryOff, rz, 1.0f, th, 1.0f, tR, tG, tB, alpha);
                     }
                 }
             } else if (renderType == 28) { // RENDER_GLASS_PANE
@@ -2037,19 +2067,22 @@ public class VoxelMapRenderer {
                 float gB = (b * brightness) / 255.0f;
                 float glassAlpha = 0.4f;
                 
-                // Post: 2x2 pixels -> 0.125f thickness
+                // Glass Pane Model: Flat sheets, not bars
+                // Post: 2x2 pixels -> 0.125f thickness (Center column)
                 float postTh = 0.125f;
                 
-                renderBox(buf, pose, rx, ry, rz, postTh, 1.0f, postTh, gR, gG, gB, glassAlpha);
+                // Render Center Post
+                renderBoxWithOutlines(buf, pose, rx, ryOff, rz, postTh, 1.0f, postTh, gR, gG, gB, glassAlpha);
                 
-                // Arms
-                float armL = 0.4375f;
+                // Arms: Flat panes (2 pixels thick)
+                float paneTh = 0.125f;
+                float armL = 0.4375f; // Reach to edge
                 float armOffset = 0.5f - (armL / 2.0f);
                 
-                if (cN) renderBox(buf, pose, rx, ry, rz - armOffset, postTh, 1.0f, armL, gR, gG, gB, glassAlpha);
-                if (cS) renderBox(buf, pose, rx, ry, rz + armOffset, postTh, 1.0f, armL, gR, gG, gB, glassAlpha);
-                if (cE) renderBox(buf, pose, rx + armOffset, ry, rz, armL, 1.0f, postTh, gR, gG, gB, glassAlpha);
-                if (cW) renderBox(buf, pose, rx - armOffset, ry, rz, armL, 1.0f, postTh, gR, gG, gB, glassAlpha);
+                if (cN) renderBoxWithOutlines(buf, pose, rx, ryOff, rz - armOffset, paneTh, 1.0f, armL, gR, gG, gB, glassAlpha);
+                if (cS) renderBoxWithOutlines(buf, pose, rx, ryOff, rz + armOffset, paneTh, 1.0f, armL, gR, gG, gB, glassAlpha);
+                if (cE) renderBoxWithOutlines(buf, pose, rx + armOffset, ryOff, rz, armL, 1.0f, paneTh, gR, gG, gB, glassAlpha);
+                if (cW) renderBoxWithOutlines(buf, pose, rx - armOffset, ryOff, rz, armL, 1.0f, paneTh, gR, gG, gB, glassAlpha);
 
             } else if (renderType == 29) { // RENDER_GLASS_BLOCK
                 float glassAlpha = 0.4f;
@@ -2079,8 +2112,8 @@ public class VoxelMapRenderer {
                  
                  // Center defaults
                  float cx = (float)rx;
-                 float cy = (float)ry;
-                 float cz = (float)rz;
+                float cy = (float)ryOff;
+                float cz = (float)rz;
                  
                  if (facing == 0) { // Down
                      // Rod
@@ -2130,8 +2163,8 @@ public class VoxelMapRenderer {
                  float wB = 0.1f * brightness;
                  
                  // Create a local copy of the matrix for rotation
-                 Matrix4f model = new Matrix4f(pose);
-                 model.translate((float)rx, (float)ry, (float)rz);
+                Matrix4f model = new Matrix4f(pose);
+                model.translate((float)rx, (float)ryOff, (float)rz);
                  
                  if (isWall) {
                      // Wall Banner
@@ -2183,6 +2216,311 @@ public class VoxelMapRenderer {
                      // Center Y = 1.4 - 0.8 = 0.6.
                      renderBox(buf, model, 0, 0.6, 0.04, 0.7f, 1.6f, 0.04f, bR, bG, bB, alpha);
                  }
+
+            } else if (renderType >= 41 && renderType <= 56) { // RENDER_CARPET (White to Black)
+                // Carpet: Thin slice at bottom
+                // Thickness: 1/16 = 0.0625
+                float cThick = 0.0625f;
+                
+                // Use passed color (r,g,b)
+                // Position: ryOff (on floor)
+                renderBoxWithOutlines(buf, pose, rx, ryOff, rz, 1.0f, cThick, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+            
+            } else if (renderType == 57) { // RENDER_MOSS_CARPET
+                 float cThick = 0.0625f;
+                 // Moss Green
+                 renderBoxWithOutlines(buf, pose, rx, ryOff, rz, 1.0f, cThick, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha);
+
+            } else if (renderType == 61) { // RENDER_RAIL
+                int shapeOrdinal = exposedFaces & 15;
+                boolean isRedstone = (exposedFaces & 16) != 0;
+                boolean isPowered = (exposedFaces & 32) != 0;
+                
+                // Rail Color (Iron-ish)
+                float rR = 0.7f * brightness;
+                float rG = 0.7f * brightness;
+                float rB = 0.7f * brightness;
+                
+                // Tie Color (Wood-ish)
+                float tR = 0.4f * brightness;
+                float tG = 0.3f * brightness;
+                float tB = 0.1f * brightness;
+                
+                // Dimensions
+                float railW = 0.125f; // 2 pixels
+                float railH = 0.125f; // 2 pixels height
+                float gauge = 0.6f; // Distance between rail centers
+                float tieW = 0.125f; // 2 pixels
+                float tieL = 0.8f; // Length of tie
+                float tieH = 0.0625f; // 1 pixel
+                
+                // Local Matrix for rotation
+                Matrix4f model = new Matrix4f(pose);
+                model.translate((float)rx, (float)ryOff, (float)rz);
+                
+                // 0:N-S, 1:E-W, 2:ASC_E, 3:ASC_W, 4:ASC_N, 5:ASC_S
+                // 6:SE, 7:SW, 8:NW, 9:NE
+                
+                if (shapeOrdinal == 0) { // NORTH-SOUTH
+                    // Rails
+                    renderBox(buf, model, -gauge/2, railH/2, 0, railW, railH, 1.0f, rR, rG, rB, alpha);
+                    renderBox(buf, model, gauge/2, railH/2, 0, railW, railH, 1.0f, rR, rG, rB, alpha);
+                    // Ties (3 per block)
+                    renderBox(buf, model, 0, tieH/2, 0, tieL, tieH, tieW, tR, tG, tB, alpha);
+                    renderBox(buf, model, 0, tieH/2, -0.35f, tieL, tieH, tieW, tR, tG, tB, alpha);
+                    renderBox(buf, model, 0, tieH/2, 0.35f, tieL, tieH, tieW, tR, tG, tB, alpha);
+                } else if (shapeOrdinal == 1) { // EAST-WEST
+                    model.rotate(Axis.YP.rotationDegrees(90));
+                    // Rails
+                    renderBox(buf, model, -gauge/2, railH/2, 0, railW, railH, 1.0f, rR, rG, rB, alpha);
+                    renderBox(buf, model, gauge/2, railH/2, 0, railW, railH, 1.0f, rR, rG, rB, alpha);
+                    // Ties
+                    renderBox(buf, model, 0, tieH/2, 0, tieL, tieH, tieW, tR, tG, tB, alpha);
+                    renderBox(buf, model, 0, tieH/2, -0.35f, tieL, tieH, tieW, tR, tG, tB, alpha);
+                    renderBox(buf, model, 0, tieH/2, 0.35f, tieL, tieH, tieW, tR, tG, tB, alpha);
+                } else if (shapeOrdinal >= 2 && shapeOrdinal <= 5) { // ASCENDING
+                    float slopeAngle = 45.0f;
+                    // Rotate based on direction
+                    if (shapeOrdinal == 2) { // ASC_EAST (X+)
+                         model.rotate(Axis.YP.rotationDegrees(90));
+                         model.rotate(Axis.XP.rotationDegrees(-slopeAngle));
+                    } else if (shapeOrdinal == 3) { // ASC_WEST (X-)
+                         model.rotate(Axis.YP.rotationDegrees(270));
+                         model.rotate(Axis.XP.rotationDegrees(-slopeAngle));
+                    } else if (shapeOrdinal == 4) { // ASC_NORTH (Z-)
+                         model.rotate(Axis.YP.rotationDegrees(180));
+                         model.rotate(Axis.XP.rotationDegrees(-slopeAngle));
+                    } else if (shapeOrdinal == 5) { // ASC_SOUTH (Z+)
+                         model.rotate(Axis.YP.rotationDegrees(0));
+                         model.rotate(Axis.XP.rotationDegrees(-slopeAngle));
+                    }
+                    // Rails (Longer for slope? 1.0/cos(45) ~ 1.414)
+                    float len = 1.414f;
+                    renderBox(buf, model, -gauge/2, railH/2 + 0.5f, 0, railW, railH, len, rR, rG, rB, alpha);
+                    renderBox(buf, model, gauge/2, railH/2 + 0.5f, 0, railW, railH, len, rR, rG, rB, alpha);
+                    // Ties
+                    renderBox(buf, model, 0, tieH/2 + 0.5f, 0, tieL, tieH, tieW, tR, tG, tB, alpha);
+                    renderBox(buf, model, 0, tieH/2 + 0.5f, -0.35f, tieL, tieH, tieW, tR, tG, tB, alpha);
+                    renderBox(buf, model, 0, tieH/2 + 0.5f, 0.35f, tieL, tieH, tieW, tR, tG, tB, alpha);
+                } else if (shapeOrdinal >= 6 && shapeOrdinal <= 9) { // CURVES
+                    // 6:SE, 7:SW, 8:NW, 9:NE
+                    // Render as two straight segments meeting at corner
+                    
+                    float rot = 0;
+                    if (shapeOrdinal == 6) rot = 0; // SE: South + East
+                    else if (shapeOrdinal == 7) rot = 270; // SW: South + West (Fixed rotation)
+                    else if (shapeOrdinal == 8) rot = 180; // NW: North + West
+                    else if (shapeOrdinal == 9) rot = 90; // NE: North + East (Fixed rotation)
+                    
+                    model.rotate(Axis.YP.rotationDegrees(rot));
+                    
+                    // Segment 1: Center to South (+Z)
+                    renderBox(buf, model, -gauge/2, railH/2, 0.25f, railW, railH, 0.5f, rR, rG, rB, alpha);
+                    renderBox(buf, model, gauge/2, railH/2, 0.25f, railW, railH, 0.5f, rR, rG, rB, alpha);
+                    // Tie 1
+                    renderBox(buf, model, 0, tieH/2, 0.25f, tieL, tieH, tieW, tR, tG, tB, alpha);
+
+                    // Segment 2: Center to East (+X)
+                    Matrix4f arm2 = new Matrix4f(model);
+                    arm2.rotate(Axis.YP.rotationDegrees(90));
+                    
+                    renderBox(buf, arm2, -gauge/2, railH/2, 0.25f, railW, railH, 0.5f, rR, rG, rB, alpha);
+                    renderBox(buf, arm2, gauge/2, railH/2, 0.25f, railW, railH, 0.5f, rR, rG, rB, alpha);
+                    renderBox(buf, arm2, 0, tieH/2, 0.25f, tieL, tieH, tieW, tR, tG, tB, alpha);
+                    
+                    // Center Tie (Diagonal)
+                    Matrix4f center = new Matrix4f(model);
+                    center.rotate(Axis.YP.rotationDegrees(45));
+                    renderBox(buf, center, 0, tieH/2, 0, tieL, tieH, tieW, tR, tG, tB, alpha);
+                }
+                
+                // Redstone Rail Indicator
+                if (isRedstone) {
+                    float rsR = isPowered ? 1.0f : 0.6f; // Bright red if powered, dark red if not
+                    float rsG = 0.0f;
+                    float rsB = 0.0f;
+                    
+                    float yPos = tieH + 0.02f;
+                    // Adjust Y for ascending rails to be in the middle of the slope
+                    if (shapeOrdinal >= 2 && shapeOrdinal <= 5) {
+                        yPos += 0.5f;
+                    }
+                    
+                    // Draw red box in center
+                    renderBox(buf, model, 0, yPos, 0, 0.25f, 0.1f, 0.25f, rsR, rsG, rsB, alpha);
+                }
+
+            } else if (renderType == 62) { // RENDER_REPEATER
+                // Unpack
+                int facing = exposedFaces & 3; // 0=S, 1=W, 2=N, 3=E
+                boolean powered = (exposedFaces & 4) != 0;
+                int delay = (exposedFaces >> 3) & 3; // 0-3
+                boolean locked = (exposedFaces & 32) != 0;
+                
+                // Base Slab (Stone Grey)
+                float baseR = 0.6f * brightness;
+                float baseG = 0.6f * brightness;
+                float baseB = 0.6f * brightness;
+                if (locked) { // Bedrock-ish
+                    baseR = 0.3f * brightness;
+                    baseG = 0.3f * brightness;
+                    baseB = 0.3f * brightness;
+                }
+                
+                renderBoxWithOutlines(buf, pose, rx, ryOff, rz, 1.0f, 0.125f, 1.0f, baseR, baseG, baseB, alpha);
+                
+                // Torches
+                // Setup Matrix for rotation
+                Matrix4f model = new Matrix4f(pose);
+                model.translate((float)rx, (float)ryOff, (float)rz);
+                
+                float rot = 0;
+                if (facing == 0) rot = 180;
+                else if (facing == 1) rot = 270;
+                else if (facing == 2) rot = 0;
+                else if (facing == 3) rot = 90;
+                
+                model.rotate(Axis.YP.rotationDegrees(rot));
+                
+                // Torch Color
+                float tR = powered ? 1.0f : 0.5f;
+                float tG = 0.0f;
+                float tB = 0.0f;
+                
+                // Fixed Torch (Input side, which is "Back", i.e. +Z in local space)
+                renderBox(buf, model, 0, 0.125f + 0.2f, 0.3125f, 0.125f, 0.4f, 0.125f, tR, tG, tB, alpha);
+                
+                // Moving Torch (Output side, moves towards -Z)
+                float moveZ = 0.125f - (delay * 0.12f); 
+                renderBox(buf, model, 0, 0.125f + 0.2f, moveZ, 0.125f, 0.4f, 0.125f, tR, tG, tB, alpha);
+                
+            } else if (renderType == 63) { // RENDER_COMPARATOR
+                int facing = exposedFaces & 3;
+                boolean powered = (exposedFaces & 4) != 0;
+                boolean subtract = (exposedFaces & 8) != 0;
+                
+                // Base Slab
+                float baseR = 0.7f * brightness; // Lighter (Quartz)
+                float baseG = 0.7f * brightness;
+                float baseB = 0.7f * brightness;
+                
+                renderBoxWithOutlines(buf, pose, rx, ryOff, rz, 1.0f, 0.125f, 1.0f, baseR, baseG, baseB, alpha);
+                
+                Matrix4f model = new Matrix4f(pose);
+                model.translate((float)rx, (float)ryOff, (float)rz);
+                
+                float rot = 0;
+                if (facing == 0) rot = 180;
+                else if (facing == 1) rot = 270;
+                else if (facing == 2) rot = 0;
+                else if (facing == 3) rot = 90;
+                model.rotate(Axis.YP.rotationDegrees(rot));
+                
+                // Torches
+                float tR = powered ? 1.0f : 0.5f;
+                float tG = 0.0f;
+                float tB = 0.0f;
+                
+                // Back Left
+                renderBox(buf, model, -0.25f, 0.125f + 0.2f, 0.3125f, 0.125f, 0.4f, 0.125f, tR, tG, tB, alpha);
+                // Back Right
+                renderBox(buf, model, 0.25f, 0.125f + 0.2f, 0.3125f, 0.125f, 0.4f, 0.125f, tR, tG, tB, alpha);
+                
+                // Front Torch
+                float frontH = subtract ? 0.3f : 0.2f;
+                float frontY = 0.125f + (frontH/2.0f);
+                
+                renderBox(buf, model, 0, frontY, -0.3125f, 0.125f, frontH, 0.125f, tR, tG, tB, alpha);
+
+            } else if (renderType == 64) { // RENDER_PISTON
+                int facing = exposedFaces & 7; // 0-5
+                boolean sticky = (exposedFaces & 8) != 0;
+                boolean isHead = (exposedFaces & 16) != 0;
+                boolean extended = (exposedFaces & 32) != 0;
+                
+                // Colors
+                // Stone Body (Cobble)
+                float bodyR = 0.5f * brightness;
+                float bodyG = 0.5f * brightness;
+                float bodyB = 0.5f * brightness;
+                
+                // Wood Face
+                float woodR = 0.6f * brightness;
+                float woodG = 0.5f * brightness;
+                float woodB = 0.3f * brightness;
+                
+                // Slime Face
+                float slimeR = 0.4f * brightness;
+                float slimeG = 0.7f * brightness;
+                float slimeB = 0.4f * brightness;
+                
+                // Setup Rotation
+                Matrix4f model = new Matrix4f(pose);
+                model.translate((float)rx, (float)ryOff, (float)rz);
+                
+                // Default is facing UP (Y+)
+                // Rotate to match facing
+                // 0:D, 1:U, 2:N, 3:S, 4:W, 5:E
+                if (facing == 0) { // Down
+                    model.rotate(Axis.XP.rotationDegrees(180));
+                } else if (facing == 1) { // Up
+                    // No rotation
+                } else if (facing == 2) { // North (-Z)
+                    model.rotate(Axis.XP.rotationDegrees(90));
+                } else if (facing == 3) { // South (+Z)
+                    model.rotate(Axis.XP.rotationDegrees(-90));
+                } else if (facing == 4) { // West (-X)
+                    model.rotate(Axis.ZP.rotationDegrees(90));
+                } else if (facing == 5) { // East (+X)
+                    model.rotate(Axis.ZP.rotationDegrees(-90));
+                }
+                
+                if (!isHead) {
+                    // BASE BLOCK
+                    if (extended) {
+                        // Render Base without top face
+                        // Bottom (0 to 0.25)
+                        renderBox(buf, model, 0, 0.125f, 0, 1.0f, 0.25f, 1.0f, bodyR, bodyG, bodyB, alpha);
+                        // Sides (Walls) - Hollow center?
+                        // Just render full block minus top 0.25
+                        renderBox(buf, model, 0, 0.5f, 0, 1.0f, 0.5f, 1.0f, bodyR, bodyG, bodyB, alpha);
+                        // Inner Rod (Piston Neck)
+                        renderBox(buf, model, 0, 0.75f, 0, 0.25f, 0.5f, 0.25f, bodyR, bodyG, bodyB, alpha);
+                    } else {
+                        // Retracted: Full Block
+                        // Body
+                        renderBox(buf, model, 0, 0.375f, 0, 1.0f, 0.75f, 1.0f, bodyR, bodyG, bodyB, alpha);
+                        // Face (Top)
+                        float fR = sticky ? slimeR : woodR;
+                        float fG = sticky ? slimeG : woodG;
+                        float fB = sticky ? slimeB : woodB;
+                        renderBox(buf, model, 0, 0.875f, 0, 1.0f, 0.25f, 1.0f, fR, fG, fB, alpha);
+                    }
+                } else {
+                    // PISTON HEAD (Extended Part)
+                    // The "Head" is usually 1 block away from base in the facing direction.
+                    // But here we are rendering the block at the HEAD position.
+                    // So we render the flat face and the stick going BACK.
+                    
+                    // Face (Top plate)
+                    float fR = sticky ? slimeR : woodR;
+                    float fG = sticky ? slimeG : woodG;
+                    float fB = sticky ? slimeB : woodB;
+                    
+                    // Plate is at the "Top" of this block space (relative to rotation)
+                    // Actually, Piston Head occupies the block space.
+                    // The face is at the "front" of this block.
+                    // If Facing UP, Face is at Y=0.75 to 1.0?
+                    // Standard Piston Head thickness is 4 pixels (0.25).
+                    
+                    // Plate
+                    renderBox(buf, model, 0, 0.875f, 0, 1.0f, 0.25f, 1.0f, fR, fG, fB, alpha);
+                    
+                    // Stick (Neck) - Goes down
+                    // Length: It connects to the base. Base is at Y-1.
+                    // So stick goes from 0.75 down to -0.25?
+                    renderBox(buf, model, 0, 0.25f, 0, 0.25f, 1.0f, 0.25f, bodyR, bodyG, bodyB, alpha);
+                }
 
             } else {
                 // Render block as a box (1.0 size for solid terrain)
@@ -2249,6 +2587,22 @@ public class VoxelMapRenderer {
             float lerpYaw = net.minecraft.util.Mth.lerp(partialTick, e.yRotO, e.getYRot());
             
             try {
+                // Render White Border for Players
+                if (e instanceof Player) {
+                    float width = e.getBbWidth() + 0.1f;
+                    float height = e.getBbHeight() + 0.1f;
+                    
+                    Tesselator tess = Tesselator.getInstance();
+                    BufferBuilder buf = tess.getBuilder();
+                    
+                    RenderSystem.setShader(GameRenderer::getPositionColorShader);
+                    // Use slightly different logic than marker to ensure it surrounds the model
+                    // Center X/Z, Bottom Y
+                    buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+                    renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, width, height, width, 1.0f, 1.0f, 1.0f, 1.0f);
+                    BufferUploader.drawWithShader(buf.end());
+                }
+
                 // Use full bright light (15, 15) so they are visible on the map
                 mc.getEntityRenderDispatcher().render(e, 0, 0, 0, lerpYaw, partialTick, poseStack, bufferSource, LightTexture.pack(15, 15));
             } catch (Exception ex) {
@@ -2624,13 +2978,13 @@ public class VoxelMapRenderer {
         BufferUploader.drawWithShader(buf.end());
     }
 
-    private static void renderInvertedColorBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float size, float red, float green, float blue, float alpha) {
-        float minX = (float)(x - size/2);
-        float maxX = (float)(x + size/2);
+    private static void renderInvertedColorBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float red, float green, float blue, float alpha) {
+        float minX = (float)(x - w/2);
+        float maxX = (float)(x + w/2);
         float minY = (float)y;
-        float maxY = (float)(y + size);
-        float minZ = (float)(z - size/2);
-        float maxZ = (float)(z + size/2);
+        float maxY = (float)(y + h);
+        float minZ = (float)(z - d/2);
+        float maxZ = (float)(z + d/2);
         
         // Reverse winding order (3, 2, 1, 0) for inverted hull effect
         
@@ -2669,6 +3023,10 @@ public class VoxelMapRenderer {
         buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
         buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
         buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+    }
+
+    private static void renderInvertedColorBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float size, float red, float green, float blue, float alpha) {
+        renderInvertedColorBox(buf, pose, x, y, z, size, size, size, red, green, blue, alpha);
     }
 
     private static void renderChunkGrid(PoseStack poseStack, Player player, int radius) {
