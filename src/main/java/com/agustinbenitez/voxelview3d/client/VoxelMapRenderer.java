@@ -127,8 +127,41 @@ public class VoxelMapRenderer {
                 // Cave Mode: Strict vertical limits to see player inside
                 // Show floor slightly below
                 renderMinY = Math.max(minBuildHeight, playerY - 16); 
-                // Cut ceiling closer to head (playerY + 1 instead of +4) as requested
-                renderMaxY = Math.min(cutY, playerY + 1);
+                
+                // Dynamic Ceiling Detection
+                // Search for the first solid block above the player to determine ceiling height
+                int ceilingHeight = playerY + 1; // Default fallback (just above head)
+                int maxSearchHeight = playerY + 64; // Search up to 64 blocks up
+                
+                BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(player.getBlockX(), playerY + 2, player.getBlockZ());
+                boolean foundCeiling = false;
+                
+                for (int y = playerY + 2; y <= maxSearchHeight; y++) {
+                    pos.setY(y);
+                    BlockState state = mc.level.getBlockState(pos);
+                    
+                    // Check if block is solid enough to be a roof
+                    // We use canOcclude() as a general check for blocks that block view
+                    if (state.canOcclude() && !state.isAir()) {
+                        ceilingHeight = y;
+                        foundCeiling = true;
+                        break;
+                    }
+                }
+                
+                if (foundCeiling) {
+                    // If we found a ceiling, render up to just below it
+                    // This allows seeing the full height of the walls in the room
+                    renderMaxY = Math.min(cutY, ceilingHeight - 1);
+                } else {
+                    // If no ceiling found (e.g. large cavern or glitch), 
+                    // render a reasonable amount above head
+                    renderMaxY = Math.min(cutY, playerY + 16);
+                }
+                
+                // Ensure we always see at least just above the player
+                renderMaxY = Math.max(renderMaxY, playerY + 1);
+                
             } else if (isNether) {
                 // Nether Mode
                 // We want to see down to the lava lake (y=31) even if we are high up
@@ -157,7 +190,7 @@ public class VoxelMapRenderer {
         }
         
         // Render Chunks
-        renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+        renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY, isUnderground, cameraYaw);
         
         // Nether Lava Floor Fallback
         // If in Nether and we are high up, render a flat lava plane at y=31 to simulate the ocean
@@ -283,7 +316,7 @@ public class VoxelMapRenderer {
         return model.getParticleIcon();
     }
     
-    private static void renderChunkBlocksTextured(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground) {
+    private static void renderChunkBlocksTextured(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection) {
         int[] packedPositions = chunkData.positions;
         int[] colors = chunkData.colors;
         byte[] lights = chunkData.lights;
@@ -309,6 +342,23 @@ public class VoxelMapRenderer {
             double ry = h - centerY;
             double rz = (cp.z * 16 + z) - centerZ;
             
+            // Sims 4 Style Culling (Wall Cutaway)
+            if (isUnderground && cullDirection != null) {
+                 // Check Center Y > Feet Y (ry is Min Y)
+                 // If ry = -1 (Floor), ry+0.5 = -0.5. Not culled.
+                 // If ry = 0 (Feet Block), ry+0.5 = 0.5. Culled.
+                 if ((ry + 0.5) >= 0) {
+                     // Check Center X/Z
+                     double cx = rx + 0.5;
+                     double cz = rz + 0.5;
+                     
+                     if (cullDirection == Direction.NORTH && cz < -0.5) continue;
+                     if (cullDirection == Direction.SOUTH && cz > 0.5) continue;
+                     if (cullDirection == Direction.EAST && cx > 0.5) continue;
+                     if (cullDirection == Direction.WEST && cx < -0.5) continue;
+                 }
+            }
+
             int color = colors[i];
             
             float brightness = 1.0f;
@@ -454,20 +504,20 @@ public class VoxelMapRenderer {
         }
     }
 
-    private static void renderChunkChests(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground) {
+    private static void renderChunkChests(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection) {
         int[] packedPositions = chunkData.positions;
         byte[] lights = chunkData.lights;
         if (packedPositions == null) return;
         
         // Pass 1: Single Chests
-        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, 0);
+        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, cullDirection, 0);
         // Pass 2: Left Chests
-        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, 1);
+        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, cullDirection, 1);
         // Pass 3: Right Chests
-        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, 2);
+        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, cullDirection, 2);
     }
 
-    private static void renderChestPass(BufferBuilder buf, Matrix4f pose, int[] positions, byte[] lights, ChunkPos cp, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, int targetType) {
+    private static void renderChestPass(BufferBuilder buf, Matrix4f pose, int[] positions, byte[] lights, ChunkPos cp, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection, int targetType) {
         // Use standard POSITION_COLOR shader (no texture binding needed for manual geometry)
         // Ensure shader is set before calling this if not already set, or set here?
         // Caller (renderChunks) sets POSITION_COLOR before calling renderChunkChests.
@@ -507,6 +557,17 @@ public class VoxelMapRenderer {
             double ry = h - centerY;
             double rz = (cp.z * 16 + z) + 0.5 - centerZ;
             
+            // Sims 4 Style Culling (Wall Cutaway)
+            if (isUnderground && cullDirection != null) {
+                // Only cull blocks at or above player feet level (Walls)
+                if (ry >= 0) {
+                    if (cullDirection == Direction.NORTH && rz < -0.5) continue;
+                    if (cullDirection == Direction.SOUTH && rz > 0.5) continue;
+                    if (cullDirection == Direction.EAST && rx > 0.5) continue;
+                    if (cullDirection == Direction.WEST && rx < -0.5) continue;
+                }
+            }
+
             float brightness = 1.0f;
             if (isUnderground && !ClientSettings.fullBrightMap) {
                 double distSq = rx * rx + ry * ry + rz * rz;
@@ -908,7 +969,7 @@ public class VoxelMapRenderer {
         poseStack.popPose();
     }
     
-    private static void renderChunks(PoseStack poseStack, Player player, int radius, int minBuildHeight, int renderMinY, int renderMaxY, boolean isUnderground) {
+    private static void renderChunks(PoseStack poseStack, Player player, int radius, int minBuildHeight, int renderMinY, int renderMaxY, boolean isUnderground, float cameraYaw) {
         double centerX = player.getX();
         double centerZ = player.getZ();
         double centerY = player.getY();
@@ -922,6 +983,24 @@ public class VoxelMapRenderer {
         
         Matrix4f pose = poseStack.last().pose();
         
+        // Calculate Cull Direction (Sims 4 Style Wall Culling)
+        // Based on Camera Yaw.
+        // User feedback: "lo detecta justo al revez" (It detects it exactly backwards).
+        // So we invert the logic: Look South -> Cull South (instead of North).
+        Direction cullDirection = null;
+        if (isUnderground) {
+            float yaw = (cameraYaw % 360 + 360) % 360;
+            if (yaw >= 315 || yaw < 45) { // South (0)
+                cullDirection = Direction.SOUTH;
+            } else if (yaw >= 45 && yaw < 135) { // West (90)
+                cullDirection = Direction.WEST;
+            } else if (yaw >= 135 && yaw < 225) { // North (180)
+                cullDirection = Direction.NORTH;
+            } else { // East (270)
+                cullDirection = Direction.EAST;
+            }
+        }
+
         if (radius > 0) {
             // Optimized loop: only iterate nearby chunks (coordinate loop)
             for (int x = -radius; x <= radius; x++) {
@@ -935,18 +1014,18 @@ public class VoxelMapRenderer {
                          
                          // Flush per chunk to avoid massive buffers (OutOfMemory)
                          buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-                         renderChunkBlocks(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+                         renderChunkBlocks(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
                          BufferUploader.drawWithShader(buf.end());
                          
                          // Textured Pass
                          RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
                          RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
                          buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-                         renderChunkBlocksTextured(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+                         renderChunkBlocksTextured(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
                          BufferUploader.drawWithShader(buf.end());
                          
                          // Chest Pass
-                         renderChunkChests(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+                         renderChunkChests(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
                          
                          // Restore Shader for next iteration
                          RenderSystem.setShader(GameRenderer::getPositionColorShader);
@@ -957,18 +1036,18 @@ public class VoxelMapRenderer {
             // Render all scanned chunks (for full map)
             for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
                 buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-                renderChunkBlocks(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+                renderChunkBlocks(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
                 BufferUploader.drawWithShader(buf.end());
                 
                 // Textured Pass
                 RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
                 RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
                 buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-                renderChunkBlocksTextured(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+                renderChunkBlocksTextured(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
                 BufferUploader.drawWithShader(buf.end());
-                
+
                 // Chest Pass
-                renderChunkChests(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground);
+                renderChunkChests(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
                 
                 // Restore Shader
                 RenderSystem.setShader(GameRenderer::getPositionColorShader);
@@ -976,7 +1055,7 @@ public class VoxelMapRenderer {
         }
     }
     
-    private static void renderChunkBlocks(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground) {
+    private static void renderChunkBlocks(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection) {
         int[] packedPositions = chunkData.positions;
         int[] colors = chunkData.colors;
         byte[] lights = chunkData.lights;
@@ -1018,6 +1097,19 @@ public class VoxelMapRenderer {
             double ry = h - centerY;
             double rz = (cp.z * 16 + z) + 0.5 - centerZ;
             
+            // Sims 4 Style Culling (Wall Cutaway)
+            if (isUnderground && cullDirection != null) {
+                // Only cull blocks at or above player feet level (Walls)
+                // ry=0 means block center is at player feet Y.
+                // Floor is usually ry = -1.
+                if (ry >= 0) {
+                    if (cullDirection == Direction.NORTH && rz < -0.5) continue;
+                    if (cullDirection == Direction.SOUTH && rz > 0.5) continue;
+                    if (cullDirection == Direction.EAST && rx > 0.5) continue;
+                    if (cullDirection == Direction.WEST && rx < -0.5) continue;
+                }
+            }
+
             int r = (color >> 16) & 0xFF;
             int g = (color >> 8) & 0xFF;
             int b = color & 0xFF;
