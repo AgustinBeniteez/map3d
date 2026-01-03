@@ -352,7 +352,7 @@ public class VoxelMapRenderer {
             // Unpack
             int renderType = (packed >> 17) & 0x7F;
             
-            if (renderType <= 32 || renderType == 61) continue; // Skip standard blocks (<=32) and Rails (61) which are handled in non-textured pass
+            if (renderType <= 32 || renderType == 61 || (renderType >= 41 && renderType <= 57) || (renderType >= 62 && renderType <= 65)) continue; // Skip standard blocks (<=32), Rails (61), Carpets (41-57), and Custom Logic Blocks (62-65) which are handled in non-textured pass
             
             int x = packed & 0xF;
             int z = (packed >> 4) & 0xF;
@@ -1114,7 +1114,7 @@ public class VoxelMapRenderer {
             int renderType = (packed >> 17) & 0x7F; // Expanded to 7 bits
             int exposedFaces = (packed >> 24) & 0x3F; // Shifted to 24
             
-            if (renderType >= 32 && renderType != 61 && renderType != 62 && renderType != 63 && renderType != 64) continue; // Skip textured blocks (handled in textured pass), but allow Rails/Repeater/Comparator/Piston
+            if (renderType >= 32 && renderType != 61 && renderType != 62 && renderType != 63 && renderType != 64 && renderType != 65 && !(renderType >= 41 && renderType <= 57)) continue; // Skip textured blocks (handled in textured pass), but allow Rails/Repeater/Comparator/Piston/Chain/Carpets
             
             // If exposedFaces is 0, it might be old data OR a block with no exposed faces (fully buried).
             // But fully buried blocks shouldn't be in the list?
@@ -1124,8 +1124,8 @@ public class VoxelMapRenderer {
             // So we default to ALL exposed to be safe (and ugly grid) or just assume Top?
             // Let's assume old data has Top exposed at least.
             // BUT: We must exclude blocks that use exposedFaces for data packing where 0 is a valid value!
-            // 20: Button, 21: Lever, 61: Rail, 62: Repeater, 63: Comparator
-            if (exposedFaces == 0 && renderType != 20 && renderType != 21 && renderType != 61 && renderType != 62 && renderType != 63) {
+            // 20: Button, 21: Lever, 61: Rail, 62: Repeater, 63: Comparator, 65: Chain
+            if (exposedFaces == 0 && renderType != 20 && renderType != 21 && renderType != 61 && renderType != 62 && renderType != 63 && renderType != 65) {
                 exposedFaces = 0x3F; 
             }
             
@@ -2628,12 +2628,35 @@ public class VoxelMapRenderer {
                 
                 renderBox(buf, model, 0, frontY, -0.3125f, 0.125f, frontH, 0.125f, tR, tG, tB, alpha);
 
+            } else if (renderType == 65) { // RENDER_CHAIN
+                int axis = exposedFaces & 3; // 0=X, 1=Y, 2=Z
+                float width = 0.25f; // Tube diameter (Simple not too thick)
+                
+                // Grey Color
+                float cR = 0.6f;
+                float cG = 0.6f;
+                float cB = 0.6f;
+                
+                if (axis == 1) { // Y Axis (Vertical)
+                    renderBox(buf, pose, rx, ryOff, rz, width, 1.0f, width, cR * brightness, cG * brightness, cB * brightness, alpha);
+                } else if (axis == 0) { // X Axis (Horizontal)
+                    renderBox(buf, pose, rx, ryOff + 0.5f - width/2, rz, 1.0f, width, width, cR * brightness, cG * brightness, cB * brightness, alpha);
+                } else { // Z Axis (Horizontal)
+                    renderBox(buf, pose, rx, ryOff + 0.5f - width/2, rz, width, width, 1.0f, cR * brightness, cG * brightness, cB * brightness, alpha);
+                }
+
             } else {
                 // Render block as a box (1.0 size for solid terrain)
                 renderBlockWithBorders(buf, pose, rx, ry, rz, 1.0f, 1.0f, 1.0f, (r * brightness) / 255.0f, (g * brightness) / 255.0f, (b * brightness) / 255.0f, alpha, exposedFaces);
             }
         }
     }
+
+    private static net.minecraft.client.renderer.texture.TextureAtlasSprite getWhiteSprite() {
+        return net.minecraft.client.Minecraft.getInstance().getBlockRenderer().getBlockModel(net.minecraft.world.level.block.Blocks.WHITE_CONCRETE.defaultBlockState()).getParticleIcon();
+    }
+
+
     
     private static void renderEntities(PoseStack poseStack, Player player, int minY, int maxY, int radius, double cameraY) {
         double centerX = player.getX();
@@ -2701,18 +2724,18 @@ public class VoxelMapRenderer {
                     Tesselator tess = Tesselator.getInstance();
                     BufferBuilder buf = tess.getBuilder();
                     
-                    // Spectral Effect: Disable Depth Test to see outline through walls
-                    RenderSystem.disableDepthTest();
+                    // Spectral Effect: Standard Depth Test (Occluded by walls/roofs)
+                    // RenderSystem.disableDepthTest(); // Removed to prevent seeing through walls
                     
                     RenderSystem.setShader(GameRenderer::getPositionColorShader);
                     // Use slightly different logic than marker to ensure it surrounds the model
                     // Center X/Z, Bottom Y
                     buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-                    // Cyan Spectral Box (0, 1, 1)
-                    renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, width, height, width, 0.0f, 1.0f, 1.0f, 1.0f);
+                    // Cyan Spectral Box (0, 1, 1) - Offset Y by 0.02 to avoid Z-fighting with floor
+                    renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0.02f, 0, width, height, width, 0.0f, 1.0f, 1.0f, 1.0f);
                     BufferUploader.drawWithShader(buf.end());
                     
-                    RenderSystem.enableDepthTest();
+                    // RenderSystem.enableDepthTest(); // Removed
                 }
 
                 // Use full bright light (15, 15) so they are visible on the map
@@ -2894,42 +2917,47 @@ public class VoxelMapRenderer {
         int green = (int)(g * 255);
         int blue = (int)(b * 255);
         int alpha = (int)(a * 255);
+
+        // Fix Null Texture: Use White Concrete particle icon for UVs
+        net.minecraft.client.renderer.texture.TextureAtlasSprite sprite = getWhiteSprite();
+        float u = (sprite.getU0() + sprite.getU1()) / 2.0f;
+        float v = (sprite.getV0() + sprite.getV1()) / 2.0f;
         
         // Top
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
         
         // Bottom
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
         
         // Front
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
         
         // Back
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
         
         // Left
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
         
         // Right
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
     }
     
     private static void renderTexturedHead(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float size) {

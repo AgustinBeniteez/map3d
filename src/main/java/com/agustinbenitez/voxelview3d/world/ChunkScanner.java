@@ -50,6 +50,7 @@ import net.minecraft.world.level.block.CraftingTableBlock;
 import net.minecraft.world.level.block.FurnaceBlock;
 import net.minecraft.world.level.block.RepeaterBlock;
 import net.minecraft.world.level.block.ComparatorBlock;
+import net.minecraft.world.level.block.ChainBlock;
 import net.minecraft.world.level.block.state.properties.ComparatorMode;
 import net.minecraft.world.level.block.piston.PistonBaseBlock;
 import net.minecraft.world.level.block.piston.PistonHeadBlock;
@@ -138,6 +139,7 @@ public class ChunkScanner {
     public static final int RENDER_REPEATER = 62;
     public static final int RENDER_COMPARATOR = 63;
     public static final int RENDER_PISTON = 64;
+    public static final int RENDER_CHAIN = 65;
     
     private static final Map<ChunkPos, ScannedChunk> CHUNK_DATA = new HashMap<>();
 
@@ -162,7 +164,7 @@ public class ChunkScanner {
                 for (int x = 0; x < 16; x++) {
                     for (int z = 0; z < 16; z++) {
                         BlockState state = section.getBlockState(x, y, z);
-                        if (!state.isAir()) { // Capture everything including fluids
+                        if (!state.isAir() && state.getBlock() != Blocks.BARRIER) { // Capture everything including fluids (Skip Barriers)
                             // Calculate exposed faces bitmask
                             // Bit 0: West (-x)
                             // Bit 1: East (+x)
@@ -365,6 +367,18 @@ public class ChunkScanner {
                                             exposedFaces |= 32; // Bit 5
                                         }
                                     }
+
+                                } else if (state.getBlock() instanceof ChainBlock) {
+                                    renderType = RENDER_CHAIN;
+                                    exposedFaces = 0;
+                                    // Pack Axis: X(0), Y(1), Z(2)
+                                    int axis = 0;
+                                    switch(state.getValue(ChainBlock.AXIS)) {
+                                        case X: axis = 0; break;
+                                        case Y: axis = 1; break;
+                                        case Z: axis = 2; break;
+                                    }
+                                    exposedFaces = axis;
 
                                 } else if (state.getBlock() == Blocks.REPEATER) {
                                     renderType = RENDER_REPEATER;
@@ -657,6 +671,8 @@ public class ChunkScanner {
                                     }
                                 } else if (state.getBlock() == Blocks.SHROOMLIGHT) {
                                     color = 0xFF9933; // Bright Orange (More orange than default)
+                                } else if (renderType == RENDER_CHAIN) {
+                                    color = 0x333333; // Dark Grey for Chain
                                 } else if (renderType == RENDER_DOOR) {
                                      // Use block map color
                                      try {
@@ -814,6 +830,9 @@ public class ChunkScanner {
                  neighborState = s.getBlockState(x, y & 15, z);
              }
         }
+        
+        // Treat Barrier as Air (Transparent)
+        if (neighborState.getBlock() == Blocks.BARRIER) return true;
         
         // Fluid Logic: If both are fluids, treat as occluded (no border/face)
         if (!selfState.getFluidState().isEmpty()) {
