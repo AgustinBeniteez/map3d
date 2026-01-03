@@ -30,5 +30,8 @@
   "voxelview3d.zoom": "Zoom: %.1f",
   "voxelview3d.coords": "X: %d Y: %d Z: %d",
   "voxelview3d.biome.unknown": "Bioma Desconocido",
-  "voxelview3d.unknown": "Desconocido"
+  "voxelview3d.unknown": "Desconocido",
+  "voxelview3d.night_mode.on": "Modo Noche",
+  "voxelview3d.night_mode.off": "Modo Día",
+  "voxelview3d.cave_mode": "Modo Cueva"
 }

@@ -16,6 +16,8 @@ import java.util.Queue;
 
 import com.agustinbenitez.voxelview3d.VoxelView3D;
 
+import com.agustinbenitez.voxelview3d.client.ClientSettings;
+
 @Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
 public class WorldHandler {
     private static int tickCounter = 40; // Start immediately
@@ -23,6 +25,14 @@ public class WorldHandler {
     
     private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> lastDimension;
     private static ChunkPos lastPos;
+
+    public static void reset() {
+        ChunkScanner.clear();
+        scanQueue.clear();
+        lastDimension = null;
+        lastPos = null;
+        tickCounter = 20; // Force refresh immediately
+    }
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -62,8 +72,11 @@ public class WorldHandler {
                 refreshScanQueue();
             }
             
-            // Process scan queue (scan 5 chunks per tick for faster updates)
-            processScanQueue(5);
+            // Process scan queue (Update Delay: 100ms = 2 ticks)
+            // Faster processing
+            if (tickCounter % 2 == 0) {
+                processScanQueue(5);
+            }
         }
     }
 
@@ -72,7 +85,7 @@ public class WorldHandler {
         if (mc.player == null || mc.level == null) return;
 
         ChunkPos playerPos = mc.player.chunkPosition();
-        int radius = 16; // Increased radius
+        int radius = ClientSettings.renderDistance; // Use setting
         
         // Prune old chunks first
         ChunkScanner.prune(playerPos, radius + 2); // Keep a bit more than scan radius

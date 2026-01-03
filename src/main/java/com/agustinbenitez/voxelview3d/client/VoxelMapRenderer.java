@@ -50,6 +50,9 @@ import java.util.List;
 
 public class VoxelMapRenderer {
 
+    // Global State for UI
+    public static boolean isUndergroundState = false;
+
     public static void renderMap(PoseStack poseStack, float zoom, float cameraPitch, float cameraYaw, boolean isHud, int renderRadius) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
@@ -74,10 +77,19 @@ public class VoxelMapRenderer {
         poseStack.mulPose(Axis.YP.rotationDegrees(cameraYaw));
         
         // Render Player Marker (Textured Cube)
-        renderPlayerMarker(poseStack, player);
+        // Moved to end of rendering to ensure visibility (Spectral Effect)
+        boolean isTopDown = Math.abs(cameraPitch - 90.0f) < 5.0f;
         
         ClientMapData clientData = ClientMapData.getInstance();
         int cutY = clientData.getCutY();
+        
+        // Determine if we are inspecting layers (slider moved significantly from player pos)
+        boolean inspectingLayers = false;
+        double cameraY = player.getY();
+        if (Math.abs(cutY - player.getBlockY()) > 2) {
+            inspectingLayers = true;
+            cameraY = (double)cutY;
+        }
         
         int minBuildHeight = mc.level != null ? mc.level.getMinBuildHeight() : -64;
         
@@ -91,15 +103,18 @@ public class VoxelMapRenderer {
         boolean isEnd = mc.level != null && mc.level.dimension().location().getPath().contains("end");
 
         if (mc.level != null) {
-            int playerY = player.getBlockY();
-            boolean canSeeSky = mc.level.canSeeSky(player.blockPosition());
+            // Use Virtual Height for Environmental Calculations
+            int effectiveY = inspectingLayers ? cutY : player.getBlockY();
+            BlockPos effectivePos = new BlockPos(player.getBlockX(), effectiveY, player.getBlockZ());
+            
+            boolean canSeeSky = mc.level.canSeeSky(effectivePos);
             
             // Underground if can't see sky OR if deep in a hole (surface is significantly higher)
             if (isEnd) {
                 // In The End, use Heightmap because canSeeSky is unreliable (no skylight)
                 // If there are blocks significantly above us, treat as underground/indoors
                 int h = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, player.getBlockX(), player.getBlockZ());
-                isUnderground = h > player.getBlockY() + 4;
+                isUnderground = h > effectiveY + 4;
             } else {
                 isUnderground = !canSeeSky && !isNether; // Overworld logic
             }
@@ -109,7 +124,7 @@ public class VoxelMapRenderer {
                  int z = player.getBlockZ();
                  
                  // Check surrounding height (3x3 area around player)
-                 // If average surrounding height is significantly higher than playerY, we are in a hole/trench
+                 // If average surrounding height is significantly higher than effectiveY, we are in a hole/trench
                  int h1 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x + 2, z);
                  int h2 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x - 2, z);
                  int h3 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z + 2);
@@ -118,7 +133,7 @@ public class VoxelMapRenderer {
                  int avgSurrounding = (h1 + h2 + h3 + h4) / 4;
                  
                  // If player is > 3 blocks below the surrounding terrain, treat as underground (transparency)
-                 if (playerY < avgSurrounding - 3) {
+                 if (effectiveY < avgSurrounding - 3) {
                     isUnderground = true;
                 }
             }
@@ -126,17 +141,17 @@ public class VoxelMapRenderer {
             if (isUnderground) {
                 // Cave Mode: Strict vertical limits to see player inside
                 // Show floor slightly below
-                renderMinY = Math.max(minBuildHeight, playerY - 16); 
+                renderMinY = Math.max(minBuildHeight, effectiveY - 16); 
                 
                 // Dynamic Ceiling Detection
                 // Search for the first solid block above the player to determine ceiling height
-                int ceilingHeight = playerY + 1; // Default fallback (just above head)
-                int maxSearchHeight = playerY + 64; // Search up to 64 blocks up
+                int ceilingHeight = effectiveY + 1; // Default fallback (just above head)
+                int maxSearchHeight = effectiveY + 64; // Search up to 64 blocks up
                 
-                BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(player.getBlockX(), playerY + 2, player.getBlockZ());
+                BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(player.getBlockX(), effectiveY + 2, player.getBlockZ());
                 boolean foundCeiling = false;
                 
-                for (int y = playerY + 2; y <= maxSearchHeight; y++) {
+                for (int y = effectiveY + 2; y <= maxSearchHeight; y++) {
                     pos.setY(y);
                     BlockState state = mc.level.getBlockState(pos);
                     
@@ -156,11 +171,11 @@ public class VoxelMapRenderer {
                 } else {
                     // If no ceiling found (e.g. large cavern or glitch), 
                     // render a reasonable amount above head
-                    renderMaxY = Math.min(cutY, playerY + 16);
+                    renderMaxY = Math.min(cutY, effectiveY + 16);
                 }
                 
                 // Ensure we always see at least just above the player
-                renderMaxY = Math.max(renderMaxY, playerY + 1);
+                renderMaxY = Math.max(renderMaxY, effectiveY + 1);
                 
             } else if (isNether) {
                 // Nether Mode
@@ -170,11 +185,11 @@ public class VoxelMapRenderer {
                 int lavaLevel = minBuildHeight; 
                 
                 // If we are high, renderMinY should reach down to lavaLevel
-                renderMinY = Math.min(playerY - 32, lavaLevel);
+                renderMinY = Math.min(effectiveY - 32, lavaLevel);
                 renderMinY = Math.max(minBuildHeight, renderMinY);
                 
                 // Ceiling: just above player or cutY
-                renderMaxY = Math.min(cutY, playerY + 32); 
+                renderMaxY = Math.min(cutY, effectiveY + 32); 
             } else if (isEnd) {
                 // End Mode
                 // Always render from the bottom to ensure floating islands are visible even when high up
@@ -184,29 +199,38 @@ public class VoxelMapRenderer {
             } else {
                 // Surface Mode: Show deeper context
                 // Ensure we see down to sea level (60) when flying high, but keep culling when low
-                renderMinY = Math.max(minBuildHeight, Math.min(playerY - 32, 60));
-                // renderMaxY remains cutY (or sky)
+                renderMinY = Math.max(minBuildHeight, Math.min(effectiveY - 32, 60));
+                
+                // Don't cut mountains/trees in Surface Mode (User Request)
+                // If we are "outside", we want to see the full height of the world
+                renderMaxY = mc.level.getMaxBuildHeight();
             }
         }
         
+        // Update Global State for UI
+        isUndergroundState = isUnderground;
+        
         // Render Chunks
-        renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY, isUnderground, cameraYaw);
+        renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY, isUnderground, cameraYaw, cameraY);
         
         // Nether Lava Floor Fallback
         // If in Nether and we are high up, render a flat lava plane at y=31 to simulate the ocean
         // in case chunks are missing or unloaded.
         if (isNether) {
-            renderNetherLavaFloor(poseStack, player, renderRadius);
+            renderNetherLavaFloor(poseStack, player, renderRadius, cameraY);
         }
         
         // Render Entities
-        renderEntities(poseStack, player, renderMinY, renderMaxY, renderRadius);
+        renderEntities(poseStack, player, renderMinY, renderMaxY, renderRadius, cameraY);
 
         // Render Chunk Grid
         renderChunkGrid(poseStack, player, renderRadius);
 
         // Render Waypoints
-        renderWaypoints(poseStack, player, cameraYaw, cameraPitch);
+        renderWaypoints(poseStack, player, cameraYaw, cameraPitch, cameraY);
+        
+        // Render Player Marker (Spectral Effect - Always Visible)
+        renderPlayerMarker(poseStack, player, isTopDown, inspectingLayers);
         
         poseStack.popPose();
         
@@ -777,10 +801,10 @@ public class VoxelMapRenderer {
         }
     }
 
-    private static void renderNetherLavaFloor(PoseStack poseStack, Player player, int radius) {
+    private static void renderNetherLavaFloor(PoseStack poseStack, Player player, int radius, double cameraY) {
         double centerX = player.getX();
         double centerZ = player.getZ();
-        double centerY = player.getY();
+        double centerY = cameraY;
         
         // Lava surface level (bottom of block 31)
         double planeY = 31.0 - centerY; 
@@ -830,12 +854,12 @@ public class VoxelMapRenderer {
         BufferUploader.drawWithShader(buf.end());
     }
 
-    private static void renderWaypoints(PoseStack poseStack, Player player, float cameraYaw, float cameraPitch) {
+    private static void renderWaypoints(PoseStack poseStack, Player player, float cameraYaw, float cameraPitch, double cameraY) {
         if (ClientSettings.waypoints.isEmpty()) return;
         
         double centerX = player.getX();
         double centerZ = player.getZ();
-        double centerY = player.getY();
+        double centerY = cameraY;
         
         // Track waypoint counts at each location to stack them
         Map<String, Integer> waypointCounts = new HashMap<>();
@@ -934,45 +958,60 @@ public class VoxelMapRenderer {
         }
     }
     
-    private static void renderPlayerMarker(PoseStack poseStack, Player player) {
+    private static void renderPlayerMarker(PoseStack poseStack, Player player, boolean isTopDown, boolean inspectingLayers) {
+        if (inspectingLayers) return;
+
         if (!(player instanceof AbstractClientPlayer)) return;
         
         AbstractClientPlayer abstractClientPlayer = (AbstractClientPlayer) player;
         ResourceLocation skin = abstractClientPlayer.getSkinTextureLocation();
+        
+        // Spectral Effect: Disable Depth Test to see through walls
+        RenderSystem.disableDepthTest();
         
         RenderSystem.setShaderTexture(0, skin);
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
         
         poseStack.pushPose();
         // Rotate to match player facing
-        // Model faces North (-Z). Minecraft Yaw: S=0, W=90, N=180, E=270.
-        // We need to rotate by (180 - playerYaw) to align model with player direction.
         poseStack.mulPose(Axis.YP.rotationDegrees(180 - player.getYRot()));
+        
+        // If Top-Down view, rotate head up so face looks at camera (Up)
+        if (isTopDown) {
+             poseStack.mulPose(Axis.XP.rotationDegrees(90));
+        }
         
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
         
-        float headSize = 2.0f; // Increased size (was 1.0f)
-        float borderSize = 2.3f; // Slightly larger for border
+        float headSize = 2.0f; 
+        float borderSize = 2.2f; // Slightly larger for border (Spectral Glow)
         
-        // 1. Render Textured Head
+        // 1. Render Spectral Glow (Cyan Border)
+        // Use Inverted Hull but with Cyan color and transparency if desired
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        // Cyan: R=0, G=1, B=1. 
+        renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, borderSize, 0.0f, 1.0f, 1.0f, 1.0f); // Cyan
+        BufferUploader.drawWithShader(buf.end());
+        
+        // 2. Render Textured Head
+        RenderSystem.setShaderTexture(0, skin);
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
         buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
         renderTexturedHead(buf, poseStack.last().pose(), 0, 0, 0, headSize);
         BufferUploader.drawWithShader(buf.end());
         
-        // 2. Render White Border (Inverted Hull)
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, borderSize, 1.0f, 1.0f, 1.0f, 1.0f);
-        BufferUploader.drawWithShader(buf.end());
-        
         poseStack.popPose();
+        
+        // Restore Depth Test
+        RenderSystem.enableDepthTest();
     }
     
-    private static void renderChunks(PoseStack poseStack, Player player, int radius, int minBuildHeight, int renderMinY, int renderMaxY, boolean isUnderground, float cameraYaw) {
+    private static void renderChunks(PoseStack poseStack, Player player, int radius, int minBuildHeight, int renderMinY, int renderMaxY, boolean isUnderground, float cameraYaw, double cameraY) {
         double centerX = player.getX();
         double centerZ = player.getZ();
-        double centerY = player.getY();
+        double centerY = cameraY;
         
         ChunkPos playerChunk = player.chunkPosition();
         Map<ChunkPos, ChunkScanner.ScannedChunk> data = ChunkScanner.getData();
@@ -985,19 +1024,22 @@ public class VoxelMapRenderer {
         
         // Calculate Cull Direction (Sims 4 Style Wall Culling)
         // Based on Camera Yaw.
-        // User feedback: "lo detecta justo al revez" (It detects it exactly backwards).
-        // So we invert the logic: Look South -> Cull South (instead of North).
+        // User feedback: "depending on where you are looking like in Sims 4"
+        // In Sims 4 (isometric), the walls facing the camera are culled so you can see inside.
+        // If camera is Looking South (Yaw 0), the camera is positioned North.
+        // The walls blocking the view are the North walls (behind the player).
+        // So: Look South -> Cull North.
         Direction cullDirection = null;
         if (isUnderground) {
             float yaw = (cameraYaw % 360 + 360) % 360;
             if (yaw >= 315 || yaw < 45) { // South (0)
-                cullDirection = Direction.SOUTH;
-            } else if (yaw >= 45 && yaw < 135) { // West (90)
-                cullDirection = Direction.WEST;
-            } else if (yaw >= 135 && yaw < 225) { // North (180)
                 cullDirection = Direction.NORTH;
-            } else { // East (270)
+            } else if (yaw >= 45 && yaw < 135) { // West (90)
                 cullDirection = Direction.EAST;
+            } else if (yaw >= 135 && yaw < 225) { // North (180)
+                cullDirection = Direction.SOUTH;
+            } else { // East (270)
+                cullDirection = Direction.WEST;
             }
         }
 
@@ -1099,10 +1141,10 @@ public class VoxelMapRenderer {
             
             // Sims 4 Style Culling (Wall Cutaway)
             if (isUnderground && cullDirection != null) {
-                // Only cull blocks at or above player feet level (Walls)
-                // ry=0 means block center is at player feet Y.
-                // Floor is usually ry = -1.
-                if (ry >= 0) {
+                // Only cull blocks ABOVE player feet level (Walls)
+                // We keep the bottom block (ry < 0.9) to show the room outline (Sims 4 style "Walls Down/Cutaway")
+                // ry is relative Y from camera/player.
+                if (ry > 0.9) {
                     if (cullDirection == Direction.NORTH && rz < -0.5) continue;
                     if (cullDirection == Direction.SOUTH && rz > 0.5) continue;
                     if (cullDirection == Direction.EAST && rx > 0.5) continue;
@@ -1149,7 +1191,8 @@ public class VoxelMapRenderer {
             }
             
             // Night Mode Lighting Logic (or Underground Mode)
-            boolean useNightMode = ClientSettings.isNightMode || isUnderground;
+            // Only use lighting if Night Mode is explicitly ON (auto-switched by cave logic or manual)
+            boolean useNightMode = ClientSettings.isNightMode;
             
             if (useNightMode && lights != null && i < lights.length) {
                 int lightLevel = lights[i];
@@ -2592,10 +2635,10 @@ public class VoxelMapRenderer {
         }
     }
     
-    private static void renderEntities(PoseStack poseStack, Player player, int minY, int maxY, int radius) {
+    private static void renderEntities(PoseStack poseStack, Player player, int minY, int maxY, int radius, double cameraY) {
         double centerX = player.getX();
         double centerZ = player.getZ();
-        double centerY = player.getY();
+        double centerY = cameraY;
         
         Minecraft mc = Minecraft.getInstance();
         Iterable<Entity> entities = mc.level.entitiesForRendering();
@@ -2650,7 +2693,7 @@ public class VoxelMapRenderer {
             float lerpYaw = net.minecraft.util.Mth.lerp(partialTick, e.yRotO, e.getYRot());
             
             try {
-                // Render White Border for Players
+                // Render Spectral Border for Players
                 if (e instanceof Player) {
                     float width = e.getBbWidth() + 0.1f;
                     float height = e.getBbHeight() + 0.1f;
@@ -2658,12 +2701,18 @@ public class VoxelMapRenderer {
                     Tesselator tess = Tesselator.getInstance();
                     BufferBuilder buf = tess.getBuilder();
                     
+                    // Spectral Effect: Disable Depth Test to see outline through walls
+                    RenderSystem.disableDepthTest();
+                    
                     RenderSystem.setShader(GameRenderer::getPositionColorShader);
                     // Use slightly different logic than marker to ensure it surrounds the model
                     // Center X/Z, Bottom Y
                     buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-                    renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, width, height, width, 1.0f, 1.0f, 1.0f, 1.0f);
+                    // Cyan Spectral Box (0, 1, 1)
+                    renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, width, height, width, 0.0f, 1.0f, 1.0f, 1.0f);
                     BufferUploader.drawWithShader(buf.end());
+                    
+                    RenderSystem.enableDepthTest();
                 }
 
                 // Use full bright light (15, 15) so they are visible on the map

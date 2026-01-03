@@ -32,6 +32,10 @@ public class WaypointEventHandler {
         ClientSettings.waypoints.clear();
         WaypointManager.loadWaypoints();
         wasDead = false;
+
+        // Clear map cache and world scanner state to prevent data bleeding between worlds
+        ClientMapData.getInstance().clearCache();
+        com.agustinbenitez.voxelview3d.world.WorldHandler.reset();
     }
 
     @SubscribeEvent

@@ -33,5 +33,8 @@
   "voxelview3d.zoom": "Zoom: %.1f",
   "voxelview3d.coords": "X: %d Y: %d Z: %d",
   "voxelview3d.biome.unknown": "Bioma Desconegut",
-  "voxelview3d.unknown": "Desconegut"
+  "voxelview3d.unknown": "Desconegut",
+  "voxelview3d.night_mode.on": "Mode Nit",
+  "voxelview3d.night_mode.off": "Mode Dia",
+  "voxelview3d.cave_mode": "Mode Cova"
 }

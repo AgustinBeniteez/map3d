@@ -40,5 +40,8 @@
   "key.categories.voxelview3d": "VoxelView 3D",
   "key.voxelview3d.open_map": "打开地图",
   "key.voxelview3d.open_waypoints_list": "打开坐标点列表",
-  "key.voxelview3d.create_waypoint": "快速创建坐标点"
+  "key.voxelview3d.create_waypoint": "快速创建坐标点",
+  "voxelview3d.night_mode.on": "夜间模式",
+  "voxelview3d.night_mode.off": "白天模式",
+  "voxelview3d.cave_mode": "洞穴模式"
 }

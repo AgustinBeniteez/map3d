@@ -44,5 +44,8 @@
   "voxelview3d.chat.share_text": "[Waypoint: %s]",
   "voxelview3d.chat.share_hover": "Click para pegar comando (Luego Enter para guardar)",
   "voxelview3d.chat.waypoint_added": "Waypoint '%s' añadido!",
-  "voxelview3d.chat.waypoint_exists": "El Waypoint '%s' ya existe."
+  "voxelview3d.chat.waypoint_exists": "El Waypoint '%s' ya existe.",
+  "voxelview3d.night_mode.on": "Modo Noche",
+  "voxelview3d.night_mode.off": "Modo Día",
+  "voxelview3d.cave_mode": "Modo Cueva"
 }

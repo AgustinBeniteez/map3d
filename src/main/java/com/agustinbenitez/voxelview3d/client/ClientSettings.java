@@ -11,7 +11,7 @@ public class ClientSettings {
     public static boolean showCompass = true;
     
     // New settings
-    public static int renderDistance = 15;
+    public static int renderDistance = 5;
     public static boolean showCoords = true;
     public static boolean autoDeathPoints = true;
     public static boolean fullBrightMap = false;

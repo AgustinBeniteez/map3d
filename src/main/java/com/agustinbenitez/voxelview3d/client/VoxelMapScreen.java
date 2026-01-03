@@ -24,6 +24,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
+import net.minecraft.util.Mth;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
+
 public class VoxelMapScreen extends Screen {
     
     // Camera controls
@@ -67,8 +71,10 @@ public class VoxelMapScreen extends Screen {
     private Button toggleChunkGrid;
     private Button togglePerspective;
     private Button waypointsBtn;
+    private LayerSlider layerSlider;
     private Button closeModalBtn;
     private Button closeMapBtn;
+    private Button goBtn;
     
     // Settings Widgets
     private Button toggleCompassBtn;
@@ -150,7 +156,52 @@ public class VoxelMapScreen extends Screen {
             new ResourceLocation("voxelview3d", "textures/night.png"), // On (Night)
             new ResourceLocation("voxelview3d", "textures/day.png"),   // Off (Day)
             () -> ClientSettings.isNightMode,
-            b -> ClientSettings.isNightMode = !ClientSettings.isNightMode));
+            b -> ClientSettings.isNightMode = !ClientSettings.isNightMode) {
+                
+                private final ResourceLocation caveIcon = new ResourceLocation("voxelview3d", "textures/cave.png");
+                
+                @Override
+                public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                    boolean isOn = stateSupplier.get();
+                    
+                    // Logic:
+                    // If Underground:
+                    //   - Show Cave Icon if Night Mode is ON (Default for Cave)
+                    //   - Show Day Icon if Night Mode is OFF (User requested bright mode)
+                    // If Surface:
+                    //   - Show Night Icon if Night Mode is ON
+                    //   - Show Day Icon if Night Mode is OFF
+                    
+                    ResourceLocation texture;
+                    if (VoxelMapRenderer.isUndergroundState) {
+                         texture = isOn ? caveIcon : textureOff;
+                    } else {
+                         texture = isOn ? textureOn : textureOff;
+                    }
+                    
+                    RenderSystem.setShaderTexture(0, texture);
+                    RenderSystem.enableBlend();
+                    
+                    // Draw background if hovered
+                    if (this.isHovered) {
+                         guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x40FFFFFF);
+                    }
+                    
+                    // Draw icon centered
+                    int iconSize = width - 4;
+                    guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
+                    RenderSystem.disableBlend();
+                    
+                    // Tooltip logic could be added here
+                    if (this.isHovered) {
+                        Component tooltip = Component.translatable(isOn ? "voxelview3d.night_mode.on" : "voxelview3d.night_mode.off");
+                        if (VoxelMapRenderer.isUndergroundState && isOn) {
+                            tooltip = Component.translatable("voxelview3d.cave_mode");
+                        }
+                        guiGraphics.renderTooltip(Minecraft.getInstance().font, tooltip, mouseX, mouseY);
+                    }
+                }
+            });
         x += btnWidth + 5;
 
         // Chunk Grid Toggle
@@ -174,6 +225,60 @@ public class VoxelMapScreen extends Screen {
             Component.translatable("voxelview3d.waypoints"),
             new ResourceLocation("voxelview3d", "textures/iconpoints.png"),
             b -> toggleModal()));
+        
+        // Layer Slider
+        int minY = -64;
+        int maxY = 320;
+        if (this.minecraft.level != null) {
+            minY = this.minecraft.level.getMinBuildHeight();
+            maxY = this.minecraft.level.getMaxBuildHeight();
+        }
+        
+        // Slider moved to left, below settings button (Settings at 10, 10, size 20)
+        // Settings Bottom = 30. Gap 20 (moved from 10). Slider Y = 50.
+        // X = 15 (moved from 10) to avoid text clipping.
+        // Height 50.
+        layerSlider = addRenderableWidget(new LayerSlider(15, 50, 15, 50, minY, maxY));
+        
+        // "Go" Button (Reset to Player)
+        // Just above bottom menu (height - 25). So put at height - 50.
+        // User requested to move it up "un poco mas". Let's try height - 65.
+        // Width 40, Height 20.
+        int goBtnY = this.height - 65;
+        goBtn = addRenderableWidget(new Button(10, goBtnY, 40, 20, Component.literal("Go"), b -> {
+            if (layerSlider != null) {
+                layerSlider.resetToPlayer();
+            }
+            // Reset Pan to center on player
+            this.panX = 0;
+            this.panY = 0;
+        }, Supplier::get) {
+             @Override
+             public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                 // Custom render
+                 int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
+                 int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
+                 int textColor = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
+                 
+                 guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                 guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
+                 
+                 // Render Player Face
+                 if (minecraft.player != null) {
+                     ResourceLocation skin = minecraft.getConnection().getPlayerInfo(minecraft.player.getUUID()).getSkinLocation();
+                     RenderSystem.setShaderTexture(0, skin);
+                     // Head is at u=8, v=8, size=8x8.
+                     // Blit: x, y, size, size, u, v, uWidth, vHeight, textureWidth, textureHeight
+                     guiGraphics.blit(skin, getX() + 2, getY() + 2, 16, 16, 8.0f, 8.0f, 8, 8, 64, 64);
+                     
+                     // Draw 2nd layer (Hat)
+                     guiGraphics.blit(skin, getX() + 2, getY() + 2, 16, 16, 40.0f, 8.0f, 8, 8, 64, 64);
+                 }
+                 
+                 // Draw "Go" Text
+                 guiGraphics.drawString(font, getMessage(), getX() + 20, getY() + (height - 8) / 2, textColor);
+             }
+        });
         
         // Close Map Button (Top Right)
         closeMapBtn = addRenderableWidget(new Button(this.width - 25, 5, 20, 20, Component.literal("X"), b -> this.onClose(), Supplier::get) {
@@ -450,8 +555,8 @@ public class VoxelMapScreen extends Screen {
         }).bounds(settingsX + 10, settingsY + 75, settingsW - 20, 20).build());
         
         renderDistanceBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)), b -> {
-            ClientSettings.renderDistance += 5;
-            if (ClientSettings.renderDistance > 25) ClientSettings.renderDistance = 5;
+            ClientSettings.renderDistance += 1;
+            if (ClientSettings.renderDistance > 15) ClientSettings.renderDistance = 5;
             b.setMessage(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)));
         }).bounds(settingsX + 10, settingsY + 100, settingsW - 20, 20).build());
 
@@ -614,7 +719,9 @@ public class VoxelMapScreen extends Screen {
         if (toggleChunkGrid != null) toggleChunkGrid.visible = showBottom;
         if (togglePerspective != null) togglePerspective.visible = showBottom;
         if (waypointsBtn != null) waypointsBtn.visible = showBottom;
+        if (layerSlider != null) layerSlider.visible = showBottom;
         if (closeMapBtn != null) closeMapBtn.visible = showBottom;
+        if (goBtn != null) goBtn.visible = showBottom;
     }
     
     private void createWaypoint() {
@@ -721,6 +828,37 @@ public class VoxelMapScreen extends Screen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
     
+    // State tracking for auto-switching
+    private boolean lastUndergroundState = false;
+
+    @Override
+    public void tick() {
+        super.tick();
+        
+        // Auto-switch Night Mode based on Underground State
+        boolean currentUnderground = VoxelMapRenderer.isUndergroundState;
+        
+        if (currentUnderground != lastUndergroundState) {
+            if (currentUnderground) {
+                // Entered Cave -> Enable Lighting (Night Mode) to show torches
+                ClientSettings.isNightMode = true;
+            } else {
+                // Left Cave -> Sync with World Time
+                if (this.minecraft.level != null) {
+                    long time = this.minecraft.level.getDayTime() % 24000;
+                    ClientSettings.isNightMode = time >= 13000 && time <= 23000;
+                }
+            }
+            lastUndergroundState = currentUnderground;
+        }
+        
+        if (waypointNameField != null) waypointNameField.tick();
+        if (wpX != null) wpX.tick();
+        if (wpY != null) wpY.tick();
+        if (wpZ != null) wpZ.tick();
+        if (searchField != null) searchField.tick();
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
@@ -909,7 +1047,18 @@ public class VoxelMapScreen extends Screen {
             ResourceLocation settingsIcon = new ResourceLocation("voxelview3d", "textures/settings.png");
             RenderSystem.setShaderTexture(0, settingsIcon);
             guiGraphics.blit(settingsIcon, renderX, renderY, 0, 0, renderSize, renderSize, renderSize, renderSize);
-        }
+            
+            // Draw Y value below Layer Slider
+             int currentY = ClientMapData.getInstance().getCutY();
+             String text = "Y : " + currentY;
+             int textW = this.font.width(text);
+             // Slider at x=15, width=15 -> center=22.5 (round to 22)
+             int sliderCenter = 15 + (15 / 2);
+             int textX = sliderCenter - (textW / 2);
+             // Slider Y=50, Height=50 -> Bottom=100. Text at 102.
+             if (textX < 2) textX = 2;
+             guiGraphics.drawString(this.font, text, textX, 102, 0xFFFFFFFF);
+         }
         
         // Draw Zoom Level
         if (!showWaypointModal && !showSettingsModal) {
@@ -1359,9 +1508,9 @@ public class VoxelMapScreen extends Screen {
     }
 
     private static class ImageToggleButton extends Button {
-        private final ResourceLocation textureOn;
-        private final ResourceLocation textureOff;
-        private final Supplier<Boolean> stateSupplier;
+        protected final ResourceLocation textureOn;
+        protected final ResourceLocation textureOff;
+        protected final Supplier<Boolean> stateSupplier;
 
         public ImageToggleButton(int x, int y, int width, int height, ResourceLocation textureOn, ResourceLocation textureOff, Supplier<Boolean> stateSupplier, OnPress onPress) {
             super(x, y, width, height, Component.empty(), onPress, DEFAULT_NARRATION);
@@ -1486,5 +1635,145 @@ public class VoxelMapScreen extends Screen {
         if (dim.contains("nether")) return new ResourceLocation("minecraft", "textures/block/netherrack.png");
         if (dim.contains("end") && !dim.contains("render")) return new ResourceLocation("minecraft", "textures/block/end_stone.png");
         return new ResourceLocation("minecraft", "textures/block/grass_block_side.png");
+    }
+
+    private class LayerSlider extends AbstractWidget {
+        private final int min;
+        private final int max;
+        private double value; // 0.0 to 1.0
+        private int lastPlayerY;
+
+        public LayerSlider(int x, int y, int width, int height, int min, int max) {
+            super(x, y, width, height, Component.empty());
+            this.min = min;
+            this.max = max;
+            
+            // Set initial value based on player pos
+            if (minecraft.player != null) {
+                int playerY = minecraft.player.getBlockY();
+                this.lastPlayerY = playerY;
+                
+                // Ensure playerY is within bounds
+                playerY = Mth.clamp(playerY, min, max);
+                
+                this.value = (double)(playerY - min) / (double)(max - min);
+                this.value = Mth.clamp(this.value, 0.0, 1.0);
+                
+                // Update map immediately
+                ClientMapData.getInstance().setCutY(playerY);
+            } else {
+                this.value = 1.0; // Full height
+                this.lastPlayerY = 0;
+            }
+        }
+
+        public void resetToPlayer() {
+            if (minecraft.player != null) {
+                int playerY = minecraft.player.getBlockY();
+                this.lastPlayerY = playerY;
+                
+                // Ensure playerY is within bounds
+                playerY = Mth.clamp(playerY, min, max);
+                
+                this.value = (double)(playerY - min) / (double)(max - min);
+                this.value = Mth.clamp(this.value, 0.0, 1.0);
+                
+                // Update map immediately
+                ClientMapData.getInstance().setCutY(playerY);
+            }
+        }
+
+        @Override
+        public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            // Update value if player moved vertically (User Request)
+            if (minecraft.player != null) {
+                int currentPlayerY = minecraft.player.getBlockY();
+                if (currentPlayerY != lastPlayerY) {
+                    int delta = currentPlayerY - lastPlayerY;
+                    
+                    // Only update if we are not currently dragging the slider (to avoid conflict)
+                    if (!this.isFocused() && !this.isHovered()) { // Simple check, might be enough. Or just always update relative?
+                        // Always update relative allows "falling while inspecting".
+                        int currentCutY = ClientMapData.getInstance().getCutY();
+                        int newCutY = Mth.clamp(currentCutY + delta, min, max);
+                        
+                        this.value = (double)(newCutY - min) / (double)(max - min);
+                        this.value = Mth.clamp(this.value, 0.0, 1.0);
+                        
+                        ClientMapData.getInstance().setCutY(newCutY);
+                    }
+                    
+                    lastPlayerY = currentPlayerY;
+                }
+            }
+
+            // Draw Background (Track)
+            // Center track (4px wide)
+            int centerX = getX() + (width/2);
+            guiGraphics.fill(centerX - 2, getY(), centerX + 2, getY() + height, 0x80000000);
+            // Border for track
+            guiGraphics.renderOutline(centerX - 2, getY(), 4, height, 0xFF404040);
+            
+            // Draw Handle
+            // Value 1.0 is TOP (MaxY), Value 0.0 is BOTTOM (MinY).
+            // Screen Y: Top is Y, Bottom is Y + Height.
+            // So Value 1.0 -> Y
+            // Value 0.0 -> Y + Height - HandleH
+            
+            int handleH = 8;
+            int trackH = height - handleH;
+            int handleY = getY() + (int)((1.0 - value) * trackH);
+            
+            // Handle Box
+            int handleX = getX(); // Full width handle
+            int handleW = width;
+            
+            boolean hovered = mouseX >= handleX && mouseX <= handleX + handleW && 
+                              mouseY >= handleY && mouseY <= handleY + handleH;
+            
+            // Fill Handle
+            guiGraphics.fill(handleX, handleY, handleX + handleW, handleY + handleH, hovered ? 0xFFFFFFFF : 0xFFAAAAAA);
+            // Border Handle
+            guiGraphics.renderOutline(handleX, handleY, handleW, handleH, 0xFF000000);
+            
+            // Draw current Y value tooltip if hovered over widget
+            if (isHovered) {
+                int currentY = min + (int)(value * (max - min));
+                Component tooltip = Component.literal("Y: " + currentY);
+                guiGraphics.renderTooltip(font, tooltip, mouseX, mouseY);
+            }
+        }
+
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) {
+            // No narration needed for now
+        }
+        
+        @Override
+        public void onClick(double mouseX, double mouseY) {
+            updateValue(mouseY);
+        }
+        
+        @Override
+        protected void onDrag(double mouseX, double mouseY, double dragX, double dragY) {
+            updateValue(mouseY);
+        }
+        
+        private void updateValue(double mouseY) {
+            int handleH = 8;
+            int trackH = height - handleH;
+            
+            // Calculate value from mouse Y relative to track top
+            // 1.0 (Top) -> mouseY = getY() + handleH/2
+            // 0.0 (Bottom) -> mouseY = getY() + height - handleH/2
+            
+            double relativeY = mouseY - (getY() + handleH / 2.0);
+            double normalized = 1.0 - (relativeY / trackH);
+            
+            this.value = Mth.clamp(normalized, 0.0, 1.0);
+            
+            int currentY = min + (int)(value * (max - min));
+            ClientMapData.getInstance().setCutY(currentY);
+        }
     }
 }
