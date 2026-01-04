@@ -36,5 +36,9 @@
   "voxelview3d.unknown": "Desconegut",
   "voxelview3d.night_mode.on": "Mode Nit",
   "voxelview3d.night_mode.off": "Mode Dia",
-  "voxelview3d.cave_mode": "Mode Cova"
+  "voxelview3d.cave_mode": "Mode Cova",
+  "voxelview3d.settings.hud_size": "Mida HUD",
+  "voxelview3d.settings.hud_size.SMALL": "Petit",
+  "voxelview3d.settings.hud_size.MEDIUM": "Mitjà",
+  "voxelview3d.settings.hud_size.LARGE": "Gran"
 }

@@ -44,6 +44,18 @@ public class CompassHud implements IGuiOverlay {
 
         int centerX = screenWidth / 2;
         int topY = 5; // Margin from top
+        
+        float hudScale = 1.0f;
+        switch (ClientSettings.hudSize) {
+            case SMALL -> hudScale = 0.5f;
+            case MEDIUM -> hudScale = 0.75f;
+            case LARGE -> hudScale = 1.0f;
+        }
+        
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(centerX, topY, 0);
+        guiGraphics.pose().scale(hudScale, hudScale, 1.0f);
+        guiGraphics.pose().translate(-centerX, -topY, 0);
 
         // 1. Draw Background
         // Black bar with transparency
@@ -52,10 +64,10 @@ public class CompassHud implements IGuiOverlay {
         // Use Scissor to clip content to the bar
         // Scissor coords are in window pixels, not GUI pixels. Need scale factor.
         double scale = mc.getWindow().getGuiScale();
-        int scissorX = (int)((centerX - COMPASS_WIDTH / 2) * scale);
-        int scissorY = (int)((mc.getWindow().getHeight() - (topY + COMPASS_HEIGHT) * scale)); // Bottom-up
-        int scissorW = (int)(COMPASS_WIDTH * scale);
-        int scissorH = (int)(COMPASS_HEIGHT * scale);
+        int scissorX = (int)((centerX - (COMPASS_WIDTH / 2.0 * hudScale)) * scale);
+        int scissorY = (int)((mc.getWindow().getHeight() - ((topY + (COMPASS_HEIGHT * hudScale))) * scale)); // Bottom-up
+        int scissorW = (int)((COMPASS_WIDTH * hudScale) * scale);
+        int scissorH = (int)((COMPASS_HEIGHT * hudScale) * scale);
         
         RenderSystem.enableScissor(scissorX, scissorY, scissorW, scissorH);
 
@@ -195,6 +207,8 @@ public class CompassHud implements IGuiOverlay {
         
         // Draw center indicator (optional triangle or line)
         guiGraphics.fill(centerX - 1, topY + COMPASS_HEIGHT, centerX + 1, topY + COMPASS_HEIGHT + 5, 0xFFFFFFFF);
+        
+        guiGraphics.pose().popPose();
     }
     
     private void drawDirection(GuiGraphics guiGraphics, float playerYaw, float targetYaw, String text, int centerX, int topY) {

@@ -36,5 +36,9 @@
   "voxelview3d.unknown": "Desconocido",
   "voxelview3d.night_mode.on": "Modo Noche",
   "voxelview3d.night_mode.off": "Modo Día",
-  "voxelview3d.cave_mode": "Modo Cueva"
+  "voxelview3d.cave_mode": "Modo Cueva",
+  "voxelview3d.settings.hud_size": "Tamaño HUD",
+  "voxelview3d.settings.hud_size.SMALL": "Pequeño",
+  "voxelview3d.settings.hud_size.MEDIUM": "Mediano",
+  "voxelview3d.settings.hud_size.LARGE": "Grande"
 }

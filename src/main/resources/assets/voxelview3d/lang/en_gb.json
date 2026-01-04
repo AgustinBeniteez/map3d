@@ -37,5 +37,9 @@
   "voxelview3d.chat.waypoint_exists": "Waypoint '%s' already exists.",
   "voxelview3d.night_mode.on": "Night Mode",
   "voxelview3d.night_mode.off": "Day Mode",
-  "voxelview3d.cave_mode": "Cave Mode"
+  "voxelview3d.cave_mode": "Cave Mode",
+  "voxelview3d.settings.hud_size": "HUD Size",
+  "voxelview3d.settings.hud_size.SMALL": "Small",
+  "voxelview3d.settings.hud_size.MEDIUM": "Medium",
+  "voxelview3d.settings.hud_size.LARGE": "Large"
 }

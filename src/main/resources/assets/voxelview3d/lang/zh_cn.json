@@ -43,5 +43,9 @@
   "key.voxelview3d.create_waypoint": "快速创建坐标点",
   "voxelview3d.night_mode.on": "夜间模式",
   "voxelview3d.night_mode.off": "白天模式",
-  "voxelview3d.cave_mode": "洞穴模式"
+  "voxelview3d.cave_mode": "洞穴模式",
+  "voxelview3d.settings.hud_size": "HUD大小",
+  "voxelview3d.settings.hud_size.SMALL": "小",
+  "voxelview3d.settings.hud_size.MEDIUM": "中",
+  "voxelview3d.settings.hud_size.LARGE": "大"
 }

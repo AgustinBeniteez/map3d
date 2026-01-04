@@ -18,6 +18,11 @@ public class ClientSettings {
     public static boolean showChunkGrid = false;
     public static boolean isNightMode = false;
     public static boolean isTopDownView = false;
+    
+    public enum HudSize {
+        SMALL, MEDIUM, LARGE
+    }
+    public static HudSize hudSize = HudSize.MEDIUM;
 
     public static final List<Waypoint> waypoints = new ArrayList<>();
 
