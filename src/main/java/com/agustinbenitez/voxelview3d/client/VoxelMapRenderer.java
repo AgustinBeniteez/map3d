@@ -90,6 +90,8 @@ public class VoxelMapRenderer {
             inspectingLayers = true;
             cameraY = (double)cutY;
         }
+
+        int effectiveY = inspectingLayers ? cutY : player.getBlockY();
         
         int minBuildHeight = mc.level != null ? mc.level.getMinBuildHeight() : -64;
         
@@ -104,7 +106,6 @@ public class VoxelMapRenderer {
 
         if (mc.level != null) {
             // Use Virtual Height for Environmental Calculations
-            int effectiveY = inspectingLayers ? cutY : player.getBlockY();
             BlockPos effectivePos = new BlockPos(player.getBlockX(), effectiveY, player.getBlockZ());
             
             boolean canSeeSky = mc.level.canSeeSky(effectivePos);
@@ -179,14 +180,22 @@ public class VoxelMapRenderer {
                 
             } else if (isNether) {
                 // Nether Mode
-                // We want to see down to the lava lake (y=31) even if we are high up
-                // User reported lava disappearing at high altitudes, so we ensure we render deep enough
-                // Using minBuildHeight ensures we see the lava lake and its shores/depth
-                int lavaLevel = minBuildHeight; 
-                
-                // If we are high, renderMinY should reach down to lavaLevel
-                renderMinY = Math.min(effectiveY - 32, lavaLevel);
-                renderMinY = Math.max(minBuildHeight, renderMinY);
+                int lavaLevel = minBuildHeight;
+                int bedrockLevel = 127;
+
+                if (effectiveY > bedrockLevel) {
+                    // Above Bedrock: Only render bedrock and above
+                    renderMinY = bedrockLevel;
+                } else {
+                    // Below Bedrock: Standard Nether rendering
+                    // We want to see down to the lava lake (y=31) even if we are high up
+                    // User reported lava disappearing at high altitudes, so we ensure we render deep enough
+                    // Using minBuildHeight ensures we see the lava lake and its shores/depth
+                    
+                    // If we are high, renderMinY should reach down to lavaLevel
+                    renderMinY = Math.min(effectiveY - 32, lavaLevel);
+                    renderMinY = Math.max(minBuildHeight, renderMinY);
+                }
                 
                 // Ceiling: just above player or cutY
                 renderMaxY = Math.min(cutY, effectiveY + 32); 
@@ -216,7 +225,7 @@ public class VoxelMapRenderer {
         // Nether Lava Floor Fallback
         // If in Nether and we are high up, render a flat lava plane at y=31 to simulate the ocean
         // in case chunks are missing or unloaded.
-        if (isNether) {
+        if (isNether && effectiveY <= 127) {
             renderNetherLavaFloor(poseStack, player, renderRadius, cameraY);
         }
         
@@ -389,7 +398,7 @@ public class VoxelMapRenderer {
             float alpha = 1.0f;
             
             // Lighting Logic (Simplified copy)
-            if (isUnderground && !ClientSettings.fullBrightMap) {
+            if (isUnderground) {
                 double distSq = rx * rx + ry * ry + rz * rz;
                 if (distSq > 36.0) {
                     double dist = Math.sqrt(distSq);
@@ -593,7 +602,7 @@ public class VoxelMapRenderer {
             }
 
             float brightness = 1.0f;
-            if (isUnderground && !ClientSettings.fullBrightMap) {
+            if (isUnderground) {
                 double distSq = rx * rx + ry * ry + rz * rz;
                 if (distSq > 36.0) {
                     double dist = Math.sqrt(distSq);
@@ -1161,7 +1170,7 @@ public class VoxelMapRenderer {
             float brightness = 1.0f;
             float alpha = 1.0f;
 
-            if (isUnderground && !ClientSettings.fullBrightMap) {
+            if (isUnderground) {
                 // Distance squared
                 double distSq = rx * rx + ry * ry + rz * rz;
                 double dist = Math.sqrt(distSq);

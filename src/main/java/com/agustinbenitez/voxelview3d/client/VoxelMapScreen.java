@@ -81,7 +81,7 @@ public class VoxelMapScreen extends Screen {
     private Button toggleCoordsBtn;
     private Button renderDistanceBtn;
     private Button autoDeathPointsBtn;
-    private Button fullBrightMapBtn;
+    // fullBrightMapBtn removed
     private Button hudSizeBtn;
     // private Button showChunkGridBtn; // Moved to main bar
     private Button closeSettingsBtn;
@@ -98,6 +98,9 @@ public class VoxelMapScreen extends Screen {
         super(Component.translatable("voxelview3d.title"));
         this.showWaypointModal = openWaypoints;
         this.isCreatingMode = createMode;
+        
+        // Load settings
+        SettingsManager.loadSettings();
         
         // Auto-select current dimension when opening the screen
         Minecraft mc = Minecraft.getInstance();
@@ -119,28 +122,28 @@ public class VoxelMapScreen extends Screen {
             new ResourceLocation("voxelview3d", "textures/types/villager.png"),
             new ResourceLocation("voxelview3d", "textures/types/villager_hide.png"),
             () -> ClientSettings.showVillagers,
-            b -> ClientSettings.showVillagers = !ClientSettings.showVillagers));
+            b -> { ClientSettings.showVillagers = !ClientSettings.showVillagers; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
         
         toggleAnimals = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
             new ResourceLocation("voxelview3d", "textures/types/animal.png"),
             new ResourceLocation("voxelview3d", "textures/types/animal_hide.png"),
             () -> ClientSettings.showAnimals,
-            b -> ClientSettings.showAnimals = !ClientSettings.showAnimals));
+            b -> { ClientSettings.showAnimals = !ClientSettings.showAnimals; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
         
         toggleEnemies = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
             new ResourceLocation("voxelview3d", "textures/types/enemie.png"),
             new ResourceLocation("voxelview3d", "textures/types/enemie_hide.png"),
             () -> ClientSettings.showEnemies,
-            b -> ClientSettings.showEnemies = !ClientSettings.showEnemies));
+            b -> { ClientSettings.showEnemies = !ClientSettings.showEnemies; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
         
         togglePlayers = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
             new ResourceLocation("voxelview3d", "textures/types/player.png"),
             new ResourceLocation("voxelview3d", "textures/types/player_hide.png"),
             () -> ClientSettings.showPlayers,
-            b -> ClientSettings.showPlayers = !ClientSettings.showPlayers));
+            b -> { ClientSettings.showPlayers = !ClientSettings.showPlayers; SettingsManager.saveSettings(); }));
         x += btnWidth + 10; // Extra gap for separator
         
         // Night Mode Toggle
@@ -193,14 +196,8 @@ public class VoxelMapScreen extends Screen {
                     guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
                     RenderSystem.disableBlend();
                     
-                    // Tooltip logic could be added here
-                    if (this.isHovered) {
-                        Component tooltip = Component.translatable(isOn ? "voxelview3d.night_mode.on" : "voxelview3d.night_mode.off");
-                        if (VoxelMapRenderer.isUndergroundState && isOn) {
-                            tooltip = Component.translatable("voxelview3d.cave_mode");
-                        }
-                        guiGraphics.renderTooltip(Minecraft.getInstance().font, tooltip, mouseX, mouseY);
-                    }
+                    // Tooltip logic removed from here to fix scaling issue
+
                 }
             });
         x += btnWidth + 5;
@@ -210,7 +207,7 @@ public class VoxelMapScreen extends Screen {
             new ResourceLocation("voxelview3d", "textures/chunks.png"),
             new ResourceLocation("voxelview3d", "textures/chunkshide.png"),
             () -> ClientSettings.showChunkGrid,
-            b -> ClientSettings.showChunkGrid = !ClientSettings.showChunkGrid));
+            b -> { ClientSettings.showChunkGrid = !ClientSettings.showChunkGrid; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
 
         // Perspective Toggle
@@ -218,7 +215,7 @@ public class VoxelMapScreen extends Screen {
             new ResourceLocation("voxelview3d", "textures/side.png"),
             new ResourceLocation("voxelview3d", "textures/up.png"),
             () -> !ClientSettings.isTopDownView,
-            b -> ClientSettings.isTopDownView = !ClientSettings.isTopDownView));
+            b -> { ClientSettings.isTopDownView = !ClientSettings.isTopDownView; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
         
         // Waypoints Button
@@ -548,28 +545,29 @@ public class VoxelMapScreen extends Screen {
         toggleCompassBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.compass").append(": ").append(Component.translatable(ClientSettings.showCompass ? "voxelview3d.settings.compass.on" : "voxelview3d.settings.compass.off")), b -> {
             ClientSettings.showCompass = !ClientSettings.showCompass;
             b.setMessage(Component.translatable("voxelview3d.settings.compass").append(": ").append(Component.translatable(ClientSettings.showCompass ? "voxelview3d.settings.compass.on" : "voxelview3d.settings.compass.off")));
+            SettingsManager.saveSettings();
         }).bounds(settingsX + 10, settingsY + 50, settingsW - 20, 20).build());
         
         toggleCoordsBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.coords").append(Component.translatable(ClientSettings.showCoords ? "voxelview3d.on" : "voxelview3d.off")), b -> {
             ClientSettings.showCoords = !ClientSettings.showCoords;
             b.setMessage(Component.translatable("voxelview3d.settings.coords").append(Component.translatable(ClientSettings.showCoords ? "voxelview3d.on" : "voxelview3d.off")));
+            SettingsManager.saveSettings();
         }).bounds(settingsX + 10, settingsY + 75, settingsW - 20, 20).build());
         
         renderDistanceBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)), b -> {
             ClientSettings.renderDistance += 1;
             if (ClientSettings.renderDistance > 15) ClientSettings.renderDistance = 5;
             b.setMessage(Component.translatable("voxelview3d.settings.render_dist").append(String.valueOf(ClientSettings.renderDistance)));
+            SettingsManager.saveSettings();
         }).bounds(settingsX + 10, settingsY + 100, settingsW - 20, 20).build());
 
         autoDeathPointsBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.auto_death").append(Component.translatable(ClientSettings.autoDeathPoints ? "voxelview3d.on" : "voxelview3d.off")), b -> {
             ClientSettings.autoDeathPoints = !ClientSettings.autoDeathPoints;
             b.setMessage(Component.translatable("voxelview3d.settings.auto_death").append(Component.translatable(ClientSettings.autoDeathPoints ? "voxelview3d.on" : "voxelview3d.off")));
+            SettingsManager.saveSettings();
         }).bounds(settingsX + 10, settingsY + 125, settingsW - 20, 20).build());
 
-        fullBrightMapBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.full_bright").append(Component.translatable(ClientSettings.fullBrightMap ? "voxelview3d.on" : "voxelview3d.off")), b -> {
-            ClientSettings.fullBrightMap = !ClientSettings.fullBrightMap;
-            b.setMessage(Component.translatable("voxelview3d.settings.full_bright").append(Component.translatable(ClientSettings.fullBrightMap ? "voxelview3d.on" : "voxelview3d.off")));
-        }).bounds(settingsX + 10, settingsY + 150, settingsW - 20, 20).build());
+        // fullBrightMapBtn removed
 
         hudSizeBtn = addRenderableWidget(Button.builder(Component.translatable("voxelview3d.settings.hud_size").append(": ").append(Component.translatable("voxelview3d.settings.hud_size." + ClientSettings.hudSize.name())), b -> {
             switch (ClientSettings.hudSize) {
@@ -578,7 +576,8 @@ public class VoxelMapScreen extends Screen {
                 case LARGE -> ClientSettings.hudSize = ClientSettings.HudSize.SMALL;
             }
             b.setMessage(Component.translatable("voxelview3d.settings.hud_size").append(": ").append(Component.translatable("voxelview3d.settings.hud_size." + ClientSettings.hudSize.name())));
-        }).bounds(settingsX + 10, settingsY + 175, settingsW - 20, 20).build());
+            SettingsManager.saveSettings();
+        }).bounds(settingsX + 10, settingsY + 150, settingsW - 20, 20).build());
 
         // Delete All Button (Settings)
         deleteAllBtn = addRenderableWidget(new Button(settingsX + 10, settingsY + 210, settingsW - 20, 20, Component.translatable("voxelview3d.waypoint.delete_all"), b -> {
@@ -715,7 +714,6 @@ public class VoxelMapScreen extends Screen {
         if (toggleCoordsBtn != null) toggleCoordsBtn.visible = showSettings;
         if (renderDistanceBtn != null) renderDistanceBtn.visible = showSettings;
         if (autoDeathPointsBtn != null) autoDeathPointsBtn.visible = showSettings;
-        if (fullBrightMapBtn != null) fullBrightMapBtn.visible = showSettings;
         if (closeSettingsBtn != null) closeSettingsBtn.visible = showSettings;
         if (deleteAllBtn != null) deleteAllBtn.visible = showSettings;
         
@@ -1132,8 +1130,7 @@ public class VoxelMapScreen extends Screen {
         if (toggleCoordsBtn != null) { toggleCoordsBtn.setX(settingsX + 10); toggleCoordsBtn.setY(settingsY + 75); }
         if (renderDistanceBtn != null) { renderDistanceBtn.setX(settingsX + 10); renderDistanceBtn.setY(settingsY + 100); }
         if (autoDeathPointsBtn != null) { autoDeathPointsBtn.setX(settingsX + 10); autoDeathPointsBtn.setY(settingsY + 125); }
-        if (fullBrightMapBtn != null) { fullBrightMapBtn.setX(settingsX + 10); fullBrightMapBtn.setY(settingsY + 150); }
-        if (hudSizeBtn != null) { hudSizeBtn.setX(settingsX + 10); hudSizeBtn.setY(settingsY + 175); }
+        if (hudSizeBtn != null) { hudSizeBtn.setX(settingsX + 10); hudSizeBtn.setY(settingsY + 150); }
         if (deleteAllBtn != null) { deleteAllBtn.setX(settingsX + 10); deleteAllBtn.setY(settingsY + 210); }
         if (closeSettingsBtn != null) { closeSettingsBtn.setX(settingsX + settingsW - 25); closeSettingsBtn.setY(settingsY + 10); }
     }
@@ -1287,6 +1284,21 @@ public class VoxelMapScreen extends Screen {
         }
         
         poseStack.popPose();
+        
+        // Render Tooltips (outside scaled context)
+        if (!showWaypointModal && !showSettingsModal && toggleNightMode != null && toggleNightMode.isHovered()) {
+             boolean isOn = ClientSettings.isNightMode;
+             Component tooltip = Component.translatable(isOn ? "voxelview3d.night_mode.on" : "voxelview3d.night_mode.off");
+             if (VoxelMapRenderer.isUndergroundState && isOn) {
+                 tooltip = Component.translatable("voxelview3d.cave_mode");
+             }
+             
+             // Ensure Z-index is higher than menu (800)
+             poseStack.pushPose();
+             poseStack.translate(0, 0, 1000);
+             guiGraphics.renderTooltip(this.font, tooltip, mouseX, mouseY);
+             poseStack.popPose();
+        }
     }
     
     private void renderCompass(GuiGraphics guiGraphics, int width, int height) {

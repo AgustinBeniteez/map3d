@@ -14,7 +14,6 @@ public class ClientSettings {
     public static int renderDistance = 5;
     public static boolean showCoords = true;
     public static boolean autoDeathPoints = true;
-    public static boolean fullBrightMap = false;
     public static boolean showChunkGrid = false;
     public static boolean isNightMode = false;
     public static boolean isTopDownView = false;
