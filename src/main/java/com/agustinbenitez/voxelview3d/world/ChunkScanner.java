@@ -1,6 +1,7 @@
 package com.agustinbenitez.voxelview3d.world;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FlowerBlock;
@@ -19,6 +20,9 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.core.Holder;
+import net.minecraft.world.level.biome.Biome;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,6 +38,7 @@ import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.RedstoneSide;
 import net.minecraft.world.level.block.CaveVines;
 
+import net.minecraft.world.level.block.LadderBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.properties.Half;
@@ -67,9 +72,6 @@ import net.minecraft.world.level.block.PumpkinBlock;
 import net.minecraft.world.level.block.MelonBlock;
 import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.level.block.state.properties.ChestType;
-import net.minecraft.world.level.block.WoolCarpetBlock;
-import net.minecraft.world.item.DyeColor;
 
 public class ChunkScanner {
     
@@ -140,6 +142,7 @@ public class ChunkScanner {
     public static final int RENDER_COMPARATOR = 63;
     public static final int RENDER_PISTON = 64;
     public static final int RENDER_CHAIN = 65;
+    public static final int RENDER_LADDER = 66;
     
     private static final Map<ChunkPos, ScannedChunk> CHUNK_DATA = new HashMap<>();
 
@@ -379,6 +382,15 @@ public class ChunkScanner {
                                         case Z: axis = 2; break;
                                     }
                                     exposedFaces = axis;
+
+                                } else if (state.getBlock() == Blocks.LADDER) {
+                                    renderType = RENDER_LADDER;
+                                    exposedFaces = 0;
+                                    Direction facing = state.getValue(LadderBlock.FACING);
+                                    if (facing == Direction.WEST) exposedFaces |= 1;
+                                    else if (facing == Direction.EAST) exposedFaces |= 2;
+                                    else if (facing == Direction.NORTH) exposedFaces |= 16;
+                                    else if (facing == Direction.SOUTH) exposedFaces |= 32;
 
                                 } else if (state.getBlock() == Blocks.REPEATER) {
                                     renderType = RENDER_REPEATER;
@@ -732,13 +744,21 @@ public class ChunkScanner {
                                     }
                                 } else {
                                         try {
-                                            color = state.getMapColor(chunk.getLevel(), new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z)).col;
+                                            BlockPos p = new BlockPos(pos.getMinBlockX() + x, worldY, pos.getMinBlockZ() + z);
+                                            color = state.getMapColor(chunk.getLevel(), p).col;
                                             
                                             // Beacon Color Override
                                             if (state.getBlock() == Blocks.BEACON) {
                                                 color = 0x74C3E3; // Beacon Blue (Diamond-ish)
                                             } else if (state.getBlock() instanceof BaseRailBlock) {
                                                 color = 0x8F7748; // Rail Wood/Iron Mix (Brownish Grey)
+                                            } else if (state.getBlock() == Blocks.GRASS_BLOCK) {
+                                                // Biome Specific Overrides
+                                                Holder<Biome> biome = chunk.getLevel().getBiome(p);
+                                                if (biome.is(Biomes.WOODED_BADLANDS)) {
+                                                     // Darker Grass for Wooded Badlands (User Request)
+                                                     color = 0x4B3B25; // Dark Brownish/Olive
+                                                }
                                             }
                                             
                                         } catch (Exception e) {

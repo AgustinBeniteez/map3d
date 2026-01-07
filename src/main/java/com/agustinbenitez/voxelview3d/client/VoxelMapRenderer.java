@@ -20,12 +20,14 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.joml.Matrix4f;
+import org.joml.Vector4f;
 
 import java.util.HashMap;
 import java.util.Map;
 
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FurnaceBlock;
+import net.minecraft.world.level.block.LadderBlock;
 import net.minecraft.world.level.block.WoolCarpetBlock;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.client.renderer.texture.TextureAtlas;
@@ -208,7 +210,8 @@ public class VoxelMapRenderer {
             } else {
                 // Surface Mode: Show deeper context
                 // Ensure we see down to sea level (60) when flying high, but keep culling when low
-                renderMinY = Math.max(minBuildHeight, Math.min(effectiveY - 32, 60));
+                // Optimization: Reduced buffer from 32 to 12 to avoid loading deep underground layers when on surface
+                renderMinY = Math.max(minBuildHeight, Math.min(effectiveY - 12, 60));
                 
                 // Don't cut mountains/trees in Surface Mode (User Request)
                 // If we are "outside", we want to see the full height of the world
@@ -218,9 +221,12 @@ public class VoxelMapRenderer {
         
         // Update Global State for UI
         isUndergroundState = isUnderground;
+
+        // Calculate Visible Faces Mask for Optimization
+        int visibleFacesMask = calculateVisibleFaces(cameraPitch, cameraYaw);
         
         // Render Chunks
-        renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY, isUnderground, cameraYaw, cameraY);
+        renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY, isUnderground, cameraYaw, cameraY, visibleFacesMask);
         
         // Nether Lava Floor Fallback
         // If in Nether and we are high up, render a flat lava plane at y=31 to simulate the ocean
@@ -349,7 +355,7 @@ public class VoxelMapRenderer {
         return model.getParticleIcon();
     }
     
-    private static void renderChunkBlocksTextured(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection) {
+    private static void renderChunkBlocksTextured(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection, int visibleFacesMask) {
         int[] packedPositions = chunkData.positions;
         int[] colors = chunkData.colors;
         byte[] lights = chunkData.lights;
@@ -430,6 +436,13 @@ public class VoxelMapRenderer {
                 state = getCarpetState(DyeColor.byId(colorId));
             } else if (renderType == 57) {
                 state = Blocks.MOSS_CARPET.defaultBlockState();
+            } else if (renderType == 66) { // LADDER
+                Direction facing = Direction.NORTH;
+                if ((exposedFaces & 1) != 0) facing = Direction.WEST;
+                else if ((exposedFaces & 2) != 0) facing = Direction.EAST;
+                else if ((exposedFaces & 32) != 0) facing = Direction.SOUTH; // 16 is North (default)
+                
+                state = Blocks.LADDER.defaultBlockState().setValue(LadderBlock.FACING, facing);
             }
             
             BakedModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
@@ -438,7 +451,7 @@ public class VoxelMapRenderer {
             float bh = 1.0f;
             float bd = 1.0f;
             
-            if (renderType == 39 || (renderType >= 41 && renderType <= 57)) {
+            if (renderType == 39 || (renderType >= 41 && renderType <= 57) || renderType == 66) {
                 // Use actual 3D model for carpets and non-full blocks to get correct side UVs and geometry
                 Level level = Minecraft.getInstance().level;
                 BlockPos pos = new BlockPos(cp.getMinBlockX() + x, h, cp.getMinBlockZ() + z);
@@ -1017,7 +1030,37 @@ public class VoxelMapRenderer {
         RenderSystem.enableDepthTest();
     }
     
-    private static void renderChunks(PoseStack poseStack, Player player, int radius, int minBuildHeight, int renderMinY, int renderMaxY, boolean isUnderground, float cameraYaw, double cameraY) {
+    private static int calculateVisibleFaces(float pitch, float yaw) {
+        int mask = 0;
+        
+        // Pitch: 90=Down, -90=Up
+        // If looking down (pitch > -45), we see Top faces (Bit 3 -> 8)
+        if (pitch > -45) mask |= 8;
+        // If looking up (pitch < 45), we see Bottom faces (Bit 2 -> 4)
+        if (pitch < 45) mask |= 4;
+        
+        // Yaw: 0=South (+Z), 90=West (-X), 180=North (-Z), 270=East (+X)
+        double rad = Math.toRadians(yaw);
+        double vx = -Math.sin(rad); // View Vector X
+        double vz = Math.cos(rad);  // View Vector Z
+        
+        // Epsilon for edge cases
+        double eps = 0.01;
+        
+        // If looking West (vx < 0), we see East faces (Bit 1 -> 2)
+        if (vx < eps) mask |= 2;
+        // If looking East (vx > 0), we see West faces (Bit 0 -> 1)
+        if (vx > -eps) mask |= 1;
+        
+        // If looking North (vz < 0), we see South faces (Bit 5 -> 32)
+        if (vz < eps) mask |= 32;
+        // If looking South (vz > 0), we see North faces (Bit 4 -> 16)
+        if (vz > -eps) mask |= 16;
+        
+        return mask;
+    }
+
+    private static void renderChunks(PoseStack poseStack, Player player, int radius, int minBuildHeight, int renderMinY, int renderMaxY, boolean isUnderground, float cameraYaw, double cameraY, int visibleFacesMask) {
         double centerX = player.getX();
         double centerZ = player.getZ();
         double centerY = cameraY;
@@ -1039,6 +1082,7 @@ public class VoxelMapRenderer {
         // The walls blocking the view are the North walls (behind the player).
         // So: Look South -> Cull North.
         Direction cullDirection = null;
+        /*
         if (isUnderground) {
             float yaw = (cameraYaw % 360 + 360) % 360;
             if (yaw >= 315 || yaw < 45) { // South (0)
@@ -1051,6 +1095,7 @@ public class VoxelMapRenderer {
                 cullDirection = Direction.WEST;
             }
         }
+        */
 
         if (radius > 0) {
             // Optimized loop: only iterate nearby chunks (coordinate loop)
@@ -1065,14 +1110,14 @@ public class VoxelMapRenderer {
                          
                          // Flush per chunk to avoid massive buffers (OutOfMemory)
                          buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-                         renderChunkBlocks(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
+                         renderChunkBlocks(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
                          BufferUploader.drawWithShader(buf.end());
                          
                          // Textured Pass
                          RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
                          RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
                          buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-                         renderChunkBlocksTextured(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
+                         renderChunkBlocksTextured(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
                          BufferUploader.drawWithShader(buf.end());
                          
                          // Chest Pass
@@ -1087,14 +1132,14 @@ public class VoxelMapRenderer {
             // Render all scanned chunks (for full map)
             for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
                 buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-                renderChunkBlocks(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
+                renderChunkBlocks(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
                 BufferUploader.drawWithShader(buf.end());
                 
                 // Textured Pass
                 RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
                 RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
                 buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-                renderChunkBlocksTextured(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
+                renderChunkBlocksTextured(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
                 BufferUploader.drawWithShader(buf.end());
 
                 // Chest Pass
@@ -1106,7 +1151,7 @@ public class VoxelMapRenderer {
         }
     }
     
-    private static void renderChunkBlocks(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection) {
+    private static void renderChunkBlocks(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection, int visibleFacesMask) {
         int[] packedPositions = chunkData.positions;
         int[] colors = chunkData.colors;
         byte[] lights = chunkData.lights;
@@ -1122,6 +1167,9 @@ public class VoxelMapRenderer {
             int relY = (packed >> 8) & 0x1FF;
             int renderType = (packed >> 17) & 0x7F; // Expanded to 7 bits
             int exposedFaces = (packed >> 24) & 0x3F; // Shifted to 24
+            
+            // Apply Camera Culling Mask
+            // exposedFaces &= visibleFacesMask;
             
             if (renderType >= 32 && renderType != 61 && renderType != 62 && renderType != 63 && renderType != 64 && renderType != 65 && !(renderType >= 41 && renderType <= 57)) continue; // Skip textured blocks (handled in textured pass), but allow Rails/Repeater/Comparator/Piston/Chain/Carpets
             

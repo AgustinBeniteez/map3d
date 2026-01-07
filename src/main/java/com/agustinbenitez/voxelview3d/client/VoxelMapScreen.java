@@ -1232,7 +1232,7 @@ public class VoxelMapScreen extends Screen {
             guiGraphics.drawString(this.font, zoomText, effectiveWidth - 80, menuY + 10, 0xFFFFFFFF);
             
             // Draw Compass
-             renderCompass(guiGraphics, effectiveWidth, effectiveHeight);
+            // renderCompass(guiGraphics, effectiveWidth, effectiveHeight);
         }
 
         Minecraft mc = Minecraft.getInstance();
