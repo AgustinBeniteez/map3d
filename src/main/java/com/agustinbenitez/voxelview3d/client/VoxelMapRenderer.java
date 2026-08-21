@@ -1060,7 +1060,9 @@ public class VoxelMapRenderer {
         if (visibleChunks.isEmpty()) return;
 
         boolean reducedDetail = visibleBlockCount >= REDUCED_DETAIL_BLOCK_THRESHOLD;
-        double detailRadius = Math.min(72.0, Math.max(28.0, 18.0 + zoom * 10.0));
+        // Keep the complete custom models over a wider area. The radius still
+        // grows with zoom so nearby screen detail does not suddenly downgrade.
+        double detailRadius = Math.min(96.0, Math.max(36.0, 24.0 + zoom * 12.0));
         double detailRadiusSq = detailRadius * detailRadius;
 
         BufferBuilder buf = Tesselator.getInstance().getBuilder();
@@ -1239,6 +1241,37 @@ public class VoxelMapRenderer {
                 || renderType == ChunkScanner.RENDER_CHAIN
                 || (renderType >= 41 && renderType <= ChunkScanner.RENDER_MOSS_CARPET);
     }
+
+    private static boolean shouldHideInDistantLod(int renderType) {
+        if (renderType >= 41 && renderType <= ChunkScanner.RENDER_MOSS_CARPET) return true;
+
+        return renderType == ChunkScanner.RENDER_TORCH
+                || renderType == ChunkScanner.RENDER_LANTERN
+                || renderType == ChunkScanner.RENDER_CAVE_VINE
+                || renderType == ChunkScanner.RENDER_CAVE_VINE_WITH_BERRIES
+                || renderType == ChunkScanner.RENDER_SUGAR_CANE
+                || renderType == ChunkScanner.RENDER_SAPLING
+                || renderType == ChunkScanner.RENDER_BAMBOO
+                || renderType == ChunkScanner.RENDER_POTTED_PLANT
+                || renderType == ChunkScanner.RENDER_FLOWER_POT
+                || renderType == ChunkScanner.RENDER_GRASS
+                || renderType == ChunkScanner.RENDER_FLOWER
+                || renderType == ChunkScanner.RENDER_TALL_FLOWER
+                || renderType == ChunkScanner.RENDER_MUSHROOM
+                || renderType == ChunkScanner.RENDER_GLOW_LICHEN
+                || renderType == ChunkScanner.RENDER_VINE
+                || renderType == ChunkScanner.RENDER_FIRE
+                || renderType == ChunkScanner.RENDER_BUTTON
+                || renderType == ChunkScanner.RENDER_LEVER
+                || renderType == ChunkScanner.RENDER_REDSTONE_WIRE
+                || renderType == ChunkScanner.RENDER_END_ROD
+                || renderType == ChunkScanner.RENDER_BANNER
+                || renderType == ChunkScanner.RENDER_RAIL
+                || renderType == ChunkScanner.RENDER_REPEATER
+                || renderType == ChunkScanner.RENDER_COMPARATOR
+                || renderType == ChunkScanner.RENDER_CHAIN
+                || renderType == ChunkScanner.RENDER_LADDER;
+    }
     
     private static void renderChunkBlocks(BufferBuilder buf, Matrix4f pose, ChunkPos cp,
                                           ChunkScanner.ScannedChunk chunkData,
@@ -1273,8 +1306,11 @@ public class VoxelMapRenderer {
             double ry = h - centerY;
             double rz = (cp.z * 16 + z) + 0.5 - centerZ;
 
-            boolean simplifiedBlock = reducedDetail && renderType != ChunkScanner.RENDER_BLOCK
-                    && rx * rx + rz * rz > detailRadiusSq;
+            boolean outsideDetailRadius = reducedDetail && rx * rx + rz * rz > detailRadiusSq;
+            if (outsideDetailRadius && shouldHideInDistantLod(renderType)) continue;
+
+            boolean simplifiedBlock = outsideDetailRadius
+                    && renderType != ChunkScanner.RENDER_BLOCK;
             if (!simplifiedBlock && !isNormallyColorRendered(renderType)) continue;
 
             if (simplifiedBlock) {
