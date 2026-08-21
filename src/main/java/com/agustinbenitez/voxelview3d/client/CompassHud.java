@@ -1,11 +1,10 @@
 package com.agustinbenitez.voxelview3d.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.player.AbstractClientPlayer;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -14,25 +13,22 @@ import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
-import net.minecraftforge.client.gui.overlay.ForgeGui;
-import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
-import java.awt.Color;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-public class CompassHud implements IGuiOverlay {
-    
-    public static final CompassHud INSTANCE = new CompassHud();
+public final class CompassHud {
+
+    private CompassHud() {
+    }
     
     private static final int COMPASS_WIDTH = 150;
     private static final int COMPASS_HEIGHT = 12;
     private static final int VISIBLE_ANGLE = 100; // Degrees visible in the bar
     private static final double MAX_ENTITY_DISTANCE = 50.0; // Blocks
 
-    @Override
-    public void render(ForgeGui gui, GuiGraphics guiGraphics, float partialTick, int screenWidth, int screenHeight) {
+    public static void render(GuiGraphics guiGraphics, DeltaTracker deltaTracker) {
         if (!ClientSettings.showCompass) return;
 
         Minecraft mc = Minecraft.getInstance();
@@ -41,6 +37,8 @@ public class CompassHud implements IGuiOverlay {
 
         Player player = mc.player;
         float playerYaw = Mth.wrapDegrees(player.getYRot());
+
+        int screenWidth = mc.getWindow().getGuiScaledWidth();
 
         int centerX = screenWidth / 2;
         int topY = 5; // Margin from top
@@ -211,7 +209,7 @@ public class CompassHud implements IGuiOverlay {
         guiGraphics.pose().popPose();
     }
     
-    private void drawDirection(GuiGraphics guiGraphics, float playerYaw, float targetYaw, String text, int centerX, int topY) {
+    private static void drawDirection(GuiGraphics guiGraphics, float playerYaw, float targetYaw, String text, int centerX, int topY) {
         float delta = Mth.wrapDegrees(targetYaw - playerYaw);
         
         if (Math.abs(delta) < VISIBLE_ANGLE / 2.0f) {
@@ -219,18 +217,17 @@ public class CompassHud implements IGuiOverlay {
             int x = (int)(centerX + offset);
             
             // Center the text
-            int textWidth = guiGraphics.pose().last().pose().toString().length(); // Dummy, get font width
             int w = Minecraft.getInstance().font.width(text);
             
             guiGraphics.drawString(Minecraft.getInstance().font, text, x - w / 2, topY + 2, 0xFFFFFFFF, false);
         }
     }
     
-    private void drawWaypointMarker(GuiGraphics guiGraphics, int x, int topY, ClientSettings.Waypoint wp, boolean isStacked) {
+    private static void drawWaypointMarker(GuiGraphics guiGraphics, int x, int topY, ClientSettings.Waypoint wp, boolean isStacked) {
         int y = topY + 1; // Slightly higher
         
         // Draw Icon instead of colored rect
-        ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+        ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
         RenderSystem.setShaderTexture(0, iconLoc);
         
         int iconSize = isStacked ? 7 : 10; // Smaller if stacked
@@ -258,7 +255,7 @@ public class CompassHud implements IGuiOverlay {
         }
     }
     
-    private void drawEntityMarker(GuiGraphics guiGraphics, float playerYaw, float entityYaw, Entity entity, int centerX, int topY) {
+    private static void drawEntityMarker(GuiGraphics guiGraphics, float playerYaw, float entityYaw, Entity entity, int centerX, int topY) {
         float delta = Mth.wrapDegrees(entityYaw - playerYaw);
         
         if (Math.abs(delta) < VISIBLE_ANGLE / 2.0f) {
@@ -269,7 +266,7 @@ public class CompassHud implements IGuiOverlay {
             if (entity instanceof AbstractClientPlayer) {
                 // Render Player Face
                 AbstractClientPlayer p = (AbstractClientPlayer) entity;
-                ResourceLocation skin = p.getSkinTextureLocation();
+                ResourceLocation skin = p.getSkin().texture();
                 
                 RenderSystem.setShaderTexture(0, skin);
                 

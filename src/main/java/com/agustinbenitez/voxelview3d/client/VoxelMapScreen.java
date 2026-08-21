@@ -1,6 +1,5 @@
 package com.agustinbenitez.voxelview3d.client;
 
-import com.agustinbenitez.voxelview3d.world.ChunkScanner;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Axis;
@@ -128,29 +127,29 @@ public class VoxelMapScreen extends Screen {
         
         // Toggle Buttons
         toggleVillagers = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            new ResourceLocation("voxelview3d", "textures/types/villager.png"),
-            new ResourceLocation("voxelview3d", "textures/types/villager_hide.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/villager.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/villager_hide.png"),
             () -> ClientSettings.showVillagers,
             b -> { ClientSettings.showVillagers = !ClientSettings.showVillagers; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
         
         toggleAnimals = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            new ResourceLocation("voxelview3d", "textures/types/animal.png"),
-            new ResourceLocation("voxelview3d", "textures/types/animal_hide.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/animal.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/animal_hide.png"),
             () -> ClientSettings.showAnimals,
             b -> { ClientSettings.showAnimals = !ClientSettings.showAnimals; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
         
         toggleEnemies = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            new ResourceLocation("voxelview3d", "textures/types/enemie.png"),
-            new ResourceLocation("voxelview3d", "textures/types/enemie_hide.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/enemie.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/enemie_hide.png"),
             () -> ClientSettings.showEnemies,
             b -> { ClientSettings.showEnemies = !ClientSettings.showEnemies; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
         
         togglePlayers = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            new ResourceLocation("voxelview3d", "textures/types/player.png"),
-            new ResourceLocation("voxelview3d", "textures/types/player_hide.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/player.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/player_hide.png"),
             () -> ClientSettings.showPlayers,
             b -> { ClientSettings.showPlayers = !ClientSettings.showPlayers; SettingsManager.saveSettings(); }));
         x += btnWidth + 10; // Extra gap for separator
@@ -166,12 +165,12 @@ public class VoxelMapScreen extends Screen {
         }
         
         toggleNightMode = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            new ResourceLocation("voxelview3d", "textures/night.png"), // On (Night)
-            new ResourceLocation("voxelview3d", "textures/day.png"),   // Off (Day)
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/night.png"), // On (Night)
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/day.png"),   // Off (Day)
             () -> ClientSettings.isNightMode,
             b -> ClientSettings.isNightMode = !ClientSettings.isNightMode) {
                 
-                private final ResourceLocation caveIcon = new ResourceLocation("voxelview3d", "textures/cave.png");
+                private final ResourceLocation caveIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/cave.png");
                 
                 @Override
                 public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
@@ -213,16 +212,16 @@ public class VoxelMapScreen extends Screen {
 
         // Chunk Grid Toggle
         toggleChunkGrid = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            new ResourceLocation("voxelview3d", "textures/chunks.png"),
-            new ResourceLocation("voxelview3d", "textures/chunkshide.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/chunks.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/chunkshide.png"),
             () -> ClientSettings.showChunkGrid,
             b -> { ClientSettings.showChunkGrid = !ClientSettings.showChunkGrid; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
 
         // Perspective Toggle
         togglePerspective = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            new ResourceLocation("voxelview3d", "textures/side.png"),
-            new ResourceLocation("voxelview3d", "textures/up.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/side.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/up.png"),
             () -> !ClientSettings.isTopDownView,
             b -> {
                 ClientSettings.isTopDownView = !ClientSettings.isTopDownView;
@@ -234,7 +233,7 @@ public class VoxelMapScreen extends Screen {
         // Waypoints Button
         waypointsBtn = addRenderableWidget(new IconTextButton(x, buttonY, 120, 20, 
             Component.translatable("voxelview3d.waypoints"),
-            new ResourceLocation("voxelview3d", "textures/iconpoints.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/iconpoints.png"),
             b -> toggleModal()));
         
         // Layer Slider
@@ -277,7 +276,7 @@ public class VoxelMapScreen extends Screen {
                  
                  // Render Player Face
                  if (minecraft.player != null) {
-                     ResourceLocation skin = minecraft.getConnection().getPlayerInfo(minecraft.player.getUUID()).getSkinLocation();
+                     ResourceLocation skin = minecraft.getConnection().getPlayerInfo(minecraft.player.getUUID()).getSkin().texture();
                      RenderSystem.setShaderTexture(0, skin);
                      // Head is at u=8, v=8, size=8x8.
                      // Blit: x, y, size, size, u, v, uWidth, vHeight, textureWidth, textureHeight
@@ -448,8 +447,8 @@ public class VoxelMapScreen extends Screen {
         
         // Hide All Button
         hideAllBtn = addRenderableWidget(new ImageToggleButton(modalX + 10 + searchW + 5, modalY + 35, 20, 20,
-            new ResourceLocation("voxelview3d", "textures/hideall.png"), // On (All Hidden)
-            new ResourceLocation("voxelview3d", "textures/nothideall.png"), // Off (Visible/Mixed)
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/hideall.png"), // On (All Hidden)
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/nothideall.png"), // Off (Visible/Mixed)
             () -> areAllHidden(currentDimensionFilter),
             b -> {
                 boolean allHidden = areAllHidden(currentDimensionFilter);
@@ -523,7 +522,7 @@ public class VoxelMapScreen extends Screen {
         // Open Create Mode Button (in List Mode)
         openCreateModeBtn = addRenderableWidget(new IconTextButton(centerX - 100, modalY + modalH - 40, 200, 20, 
             Component.translatable("voxelview3d.waypoint.create_new"), 
-            new ResourceLocation("voxelview3d", "textures/newpoint.png"),
+            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/newpoint.png"),
             b -> {
                 isCreatingMode = true;
                 editingWaypoint = null;
@@ -623,7 +622,7 @@ public class VoxelMapScreen extends Screen {
                 guiGraphics.renderOutline(getX(), getY(), width, height, color); // Red border
                 
                 // Draw Icon
-                ResourceLocation icon = new ResourceLocation("voxelview3d", "textures/deletehover.png");
+                ResourceLocation icon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/deletehover.png");
                 RenderSystem.setShaderTexture(0, icon);
                 RenderSystem.enableBlend();
                 guiGraphics.blit(icon, getX() + 5, getY() + 2, 0, 0, 16, 16, 16, 16);
@@ -974,11 +973,6 @@ public class VoxelMapScreen extends Screen {
             lastUndergroundState = currentUnderground;
         }
         
-        if (waypointNameField != null) waypointNameField.tick();
-        if (wpX != null) wpX.tick();
-        if (wpY != null) wpY.tick();
-        if (wpZ != null) wpZ.tick();
-        if (searchField != null) searchField.tick();
     }
 
     @Override
@@ -1257,7 +1251,10 @@ public class VoxelMapScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(guiGraphics);
+        // The map supplies its own background. Minecraft 1.21 blurs the current
+        // framebuffer in Screen#renderBackground, so calling it again from
+        // super.render() would blur the map and modal contents drawn below.
+        this.renderTransparentBackground(guiGraphics);
         
         PoseStack poseStack = guiGraphics.pose();
         poseStack.pushPose();
@@ -1324,7 +1321,7 @@ public class VoxelMapScreen extends Screen {
             int renderX = btnX - (renderSize - btnSize) / 2;
             int renderY = btnY - (renderSize - btnSize) / 2;
             
-            ResourceLocation settingsIcon = new ResourceLocation("voxelview3d", "textures/settings.png");
+            ResourceLocation settingsIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/settings.png");
             RenderSystem.setShaderTexture(0, settingsIcon);
             guiGraphics.blit(settingsIcon, renderX, renderY, 0, 0, renderSize, renderSize, renderSize, renderSize);
             
@@ -1343,7 +1340,7 @@ public class VoxelMapScreen extends Screen {
         // Draw Zoom Level
         if (!showWaypointModal && !showSettingsModal) {
             // Draw Zoom Icon
-            ResourceLocation zoomIcon = new ResourceLocation("voxelview3d", "textures/zoom.png");
+            ResourceLocation zoomIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/zoom.png");
             RenderSystem.setShaderTexture(0, zoomIcon);
             RenderSystem.enableBlend();
             guiGraphics.blit(zoomIcon, effectiveWidth - 100, menuY + 6, 0, 0, 16, 16, 16, 16);
@@ -1426,6 +1423,11 @@ public class VoxelMapScreen extends Screen {
              poseStack.popPose();
         }
     }
+
+    @Override
+    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        // Intentionally empty: render() draws the dim layer once before the map.
+    }
     
     private void renderCompass(GuiGraphics guiGraphics, int width, int height) {
         // Compass configuration
@@ -1446,30 +1448,29 @@ public class VoxelMapScreen extends Screen {
         
         // Draw Axis Lines
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
+        BufferBuilder buf;
         RenderSystem.disableDepthTest(); // Draw on top
         RenderSystem.lineWidth(4.0f); // Make lines thicker
         
-        buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+        buf = Tesselator.getInstance().begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
         Matrix4f pose = poseStack.last().pose();
         
         // Axis Lines (Length 1.5 for visibility)
         float len = 1.5f;
         // N (-Z) - Red
-        buf.vertex(pose, 0, 0, 0).color(255, 100, 100, 255).endVertex();
-        buf.vertex(pose, 0, 0, -len).color(255, 0, 0, 255).endVertex();
+        buf.addVertex(pose, 0, 0, 0).setColor(255, 100, 100, 255);
+        buf.addVertex(pose, 0, 0, -len).setColor(255, 0, 0, 255);
         // S (+Z) - Dark Red
-        buf.vertex(pose, 0, 0, 0).color(200, 200, 200, 255).endVertex();
-        buf.vertex(pose, 0, 0, len).color(150, 50, 50, 255).endVertex();
+        buf.addVertex(pose, 0, 0, 0).setColor(200, 200, 200, 255);
+        buf.addVertex(pose, 0, 0, len).setColor(150, 50, 50, 255);
         // E (+X) - Blue
-        buf.vertex(pose, 0, 0, 0).color(100, 100, 255, 255).endVertex();
-        buf.vertex(pose, len, 0, 0).color(0, 0, 255, 255).endVertex();
+        buf.addVertex(pose, 0, 0, 0).setColor(100, 100, 255, 255);
+        buf.addVertex(pose, len, 0, 0).setColor(0, 0, 255, 255);
         // W (-X) - Dark Blue
-        buf.vertex(pose, 0, 0, 0).color(200, 200, 200, 255).endVertex();
-        buf.vertex(pose, -len, 0, 0).color(50, 50, 150, 255).endVertex();
+        buf.addVertex(pose, 0, 0, 0).setColor(200, 200, 200, 255);
+        buf.addVertex(pose, -len, 0, 0).setColor(50, 50, 150, 255);
 
-        BufferUploader.drawWithShader(buf.end());
+        RenderBufferUtil.drawIfNotEmpty(buf);
         RenderSystem.lineWidth(1.0f); // Reset line width
         
         poseStack.popPose();
@@ -1522,7 +1523,7 @@ public class VoxelMapScreen extends Screen {
             String iconName = "icon" + (i + 1);
             
             // Draw Icon
-            ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + iconName + ".png");
+            ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + iconName + ".png");
             
             float r = ((selectedColor >> 16) & 0xFF) / 255.0f;
             float g = ((selectedColor >> 8) & 0xFF) / 255.0f;
@@ -1640,7 +1641,7 @@ public class VoxelMapScreen extends Screen {
                  }
                  
                  // Icon
-                 ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+                 ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
                  
                  float r = ((wp.color >> 16) & 0xFF) / 255.0f;
                  float g = ((wp.color >> 8) & 0xFF) / 255.0f;
@@ -1673,7 +1674,7 @@ public class VoxelMapScreen extends Screen {
                  // Share
                  boolean shareHover = mouseX >= rightEdge - 150 && mouseX < rightEdge - 130 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 150, rowY + 5, rightEdge - 130, rowY + 25, shareHover ? 0xFF606060 : 0xFF404040);
-                 ResourceLocation shareIcon = new ResourceLocation("voxelview3d", "textures/share.png");
+                 ResourceLocation shareIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/share.png");
                  RenderSystem.setShaderTexture(0, shareIcon);
                  RenderSystem.enableBlend();
                  guiGraphics.blit(shareIcon, rightEdge - 148, rowY + 7, 0, 0, 16, 16, 16, 16);
@@ -1682,7 +1683,7 @@ public class VoxelMapScreen extends Screen {
                  // Edit
                  boolean editHover = mouseX >= rightEdge - 120 && mouseX < rightEdge - 100 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 120, rowY + 5, rightEdge - 100, rowY + 25, editHover ? 0xFF606060 : 0xFF404040);
-                 ResourceLocation editIcon = new ResourceLocation("voxelview3d", "textures/edit.png");
+                 ResourceLocation editIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/edit.png");
                  RenderSystem.setShaderTexture(0, editIcon);
                  RenderSystem.enableBlend();
                  guiGraphics.blit(editIcon, rightEdge - 118, rowY + 7, 0, 0, 16, 16, 16, 16);
@@ -1691,7 +1692,7 @@ public class VoxelMapScreen extends Screen {
                  // Eye (Visibility)
                  boolean eyeHover = mouseX >= rightEdge - 90 && mouseX < rightEdge - 70 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 90, rowY + 5, rightEdge - 70, rowY + 25, eyeHover ? 0xFF606060 : 0xFF404040);
-                 ResourceLocation eyeIcon = new ResourceLocation("voxelview3d", "textures/" + (wp.visible ? "nothide.png" : "hide.png"));
+                 ResourceLocation eyeIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/" + (wp.visible ? "nothide.png" : "hide.png"));
                  RenderSystem.setShaderTexture(0, eyeIcon);
                  RenderSystem.enableBlend();
                  guiGraphics.blit(eyeIcon, rightEdge - 88, rowY + 7, 0, 0, 16, 16, 16, 16);
@@ -1709,7 +1710,7 @@ public class VoxelMapScreen extends Screen {
                  // Trash
                  boolean trashHover = mouseX >= rightEdge - 30 && mouseX < rightEdge - 10 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 30, rowY + 5, rightEdge - 10, rowY + 25, trashHover ? 0xFF606060 : 0xFF404040);
-                 ResourceLocation deleteIcon = new ResourceLocation("voxelview3d", trashHover ? "textures/deletehover.png" : "textures/delete.png");
+                 ResourceLocation deleteIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", trashHover ? "textures/deletehover.png" : "textures/delete.png");
                  RenderSystem.setShaderTexture(0, deleteIcon);
                  RenderSystem.enableBlend();
                  guiGraphics.blit(deleteIcon, rightEdge - 28, rowY + 7, 0, 0, 16, 16, 16, 16);
@@ -1767,7 +1768,7 @@ public class VoxelMapScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         float scale = getHudScale();
         double scaledX = mouseX / scale;
         double scaledY = mouseY / scale;
@@ -1788,7 +1789,7 @@ public class VoxelMapScreen extends Screen {
              int listHeight = modalH - 115; // Matches render logic
              
              if (scaledX >= listX && scaledX <= listX + listWidth && scaledY >= listY && scaledY <= listY + listHeight) {
-                 this.scrollOffset -= delta * 20; // Scroll speed
+                 this.scrollOffset -= scrollY * 20; // Scroll speed
                  if (this.scrollOffset < 0) this.scrollOffset = 0;
                  
                  // Calculate max scroll
@@ -1802,13 +1803,13 @@ public class VoxelMapScreen extends Screen {
              }
         }
 
-        if (super.mouseScrolled(scaledX, scaledY, delta)) return true;
+        if (super.mouseScrolled(scaledX, scaledY, scrollX, scrollY)) return true;
         
         if (isHoveringUI(scaledX, scaledY)) return false;
 
         // Map interaction: Zoom
         clearBlockSelection();
-        this.zoom += (float)delta * 0.5f;
+        this.zoom += (float)scrollY * 0.5f;
         if (this.zoom < 0.5f) this.zoom = 0.5f;
         if (this.zoom > 15.0f) this.zoom = 15.0f;
         return true;
@@ -1974,9 +1975,9 @@ public class VoxelMapScreen extends Screen {
     }
     
     private ResourceLocation getDimensionIcon(String dim) {
-        if (dim.contains("nether")) return new ResourceLocation("minecraft", "textures/block/netherrack.png");
-        if (dim.contains("end") && !dim.contains("render")) return new ResourceLocation("minecraft", "textures/block/end_stone.png");
-        return new ResourceLocation("minecraft", "textures/block/grass_block_side.png");
+        if (dim.contains("nether")) return ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/netherrack.png");
+        if (dim.contains("end") && !dim.contains("render")) return ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/end_stone.png");
+        return ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/grass_block_side.png");
     }
 
     private class LayerSlider extends AbstractWidget {

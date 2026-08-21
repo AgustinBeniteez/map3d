@@ -1,27 +1,21 @@
 package com.agustinbenitez.voxelview3d.client;
 
-import com.agustinbenitez.voxelview3d.VoxelView3D;
 import com.google.gson.Gson;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.client.Minecraft;
-import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.ClientChatEvent;
-import net.minecraftforge.client.event.ClientChatReceivedEvent;
-import net.minecraftforge.client.event.RegisterClientCommandsEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-@Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
 public class WaypointSharingHandler {
     private static final Gson GSON = new Gson();
     private static final String PREFIX = "[VV3D-WP:";
@@ -34,35 +28,34 @@ public class WaypointSharingHandler {
         return PREFIX + encoded + SUFFIX;
     }
 
-    @SubscribeEvent
-    public static void onRegisterClientCommands(RegisterClientCommandsEvent event) {
-        event.getDispatcher().register(
-            Commands.literal("vv3d_add_wp")
-                .then(Commands.argument("data", StringArgumentType.greedyString())
+    public static void register() {
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
+            dispatcher.register(ClientCommandManager.literal("vv3d_add_wp")
+                .then(ClientCommandManager.argument("data", StringArgumentType.greedyString())
                     .executes(context -> {
                         String encoded = StringArgumentType.getString(context, "data");
                         addWaypointFromShare(encoded);
                         return 1;
                     })
                 )
+            )
         );
+
+        ClientReceiveMessageEvents.MODIFY_GAME.register((message, overlay) ->
+                replaceShareTag(message));
+        ClientReceiveMessageEvents.ALLOW_CHAT.register((message, signedMessage, sender,
+                                                         params, receptionTimestamp) -> {
+            Component modified = replaceShareTag(message);
+            if (modified == message) return true;
+
+            Minecraft client = Minecraft.getInstance();
+            client.execute(() -> client.gui.getChat().addMessage(modified));
+            return false;
+        });
     }
 
-    @SubscribeEvent
-    public static void onClientChat(ClientChatEvent event) {
-        String msg = event.getMessage();
-        if (msg.startsWith("/vv3d_add_wp ")) {
-            event.setCanceled(true);
-            String encoded = msg.substring(13);
-            addWaypointFromShare(encoded);
-            // Optionally add to history so user can recall it if needed
-            Minecraft.getInstance().gui.getChat().addRecentChat(msg);
-        }
-    }
-
-    @SubscribeEvent
-    public static void onChatReceived(ClientChatReceivedEvent event) {
-        String msg = event.getMessage().getString();
+    private static Component replaceShareTag(Component message) {
+        String msg = message.getString();
         Matcher matcher = PATTERN.matcher(msg);
         if (matcher.find()) {
             String encoded = matcher.group(1);
@@ -80,14 +73,15 @@ public class WaypointSharingHandler {
                 
                 // Replace the tag in the message with the clickable component
                 String before = msg.substring(0, matcher.start());
+                String after = msg.substring(matcher.end());
                 
-                Component newMsg = Component.literal(before).append(clickable);
-                event.setMessage(newMsg);
+                return Component.literal(before).append(clickable).append(after);
                 
             } catch (Exception e) {
                 // Invalid format, ignore
             }
         }
+        return message;
     }
 
     private static void addWaypointFromShare(String encoded) {
@@ -109,8 +103,10 @@ public class WaypointSharingHandler {
             }
                 
         } catch (Exception e) {
-            Minecraft.getInstance().player.displayClientMessage(
-                Component.literal("§cError adding waypoint"), false);
+            if (Minecraft.getInstance().player != null) {
+                Minecraft.getInstance().player.displayClientMessage(
+                    Component.literal("Error adding waypoint").withStyle(net.minecraft.ChatFormatting.RED), false);
+            }
         }
     }
 }

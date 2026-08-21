@@ -1,60 +1,46 @@
 package com.agustinbenitez.voxelview3d;
 
 import com.agustinbenitez.voxelview3d.client.CompassHud;
+import com.agustinbenitez.voxelview3d.client.InputHandler;
 import com.agustinbenitez.voxelview3d.client.KeyBindings;
+import com.agustinbenitez.voxelview3d.client.WaypointEventHandler;
+import com.agustinbenitez.voxelview3d.client.WaypointSharingHandler;
+import com.agustinbenitez.voxelview3d.client.WorldWaypointRenderer;
+import com.agustinbenitez.voxelview3d.world.WorldHandler;
 import com.mojang.logging.LogUtils;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RegisterGuiOverlaysEvent;
-import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.server.ServerStartingEvent;
-import net.minecraftforge.eventbus.api.IEventBus;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
-import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import org.slf4j.Logger;
 
-@Mod(VoxelView3D.MODID)
-public class VoxelView3D {
+public final class VoxelView3D implements ClientModInitializer {
     public static final String MODID = "voxelview3d";
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public VoxelView3D() {
-        IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
+    @Override
+    public void onInitializeClient() {
+        KeyBindingHelper.registerKeyBinding(KeyBindings.OPEN_MAP_KEY);
+        KeyBindingHelper.registerKeyBinding(KeyBindings.OPEN_WAYPOINTS_LIST_KEY);
+        KeyBindingHelper.registerKeyBinding(KeyBindings.CREATE_WAYPOINT_KEY);
 
-        modEventBus.addListener(this::commonSetup);
+        HudRenderCallback.EVENT.register(CompassHud::render);
+        WorldRenderEvents.AFTER_TRANSLUCENT.register(WorldWaypointRenderer::render);
 
-        MinecraftForge.EVENT_BUS.register(this);
-    }
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            InputHandler.onClientTick(client);
+            WaypointEventHandler.onClientTick(client);
+            WorldHandler.onClientTick(client);
+        });
 
-    private void commonSetup(final FMLCommonSetupEvent event) {
-        LOGGER.info("HELLO FROM COMMON SETUP");
-    }
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->
+                WaypointEventHandler.onPlayerLogIn());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) ->
+                WaypointEventHandler.onPlayerLogOut());
 
-    @SubscribeEvent
-    public void onServerStarting(ServerStartingEvent event) {
-        LOGGER.info("HELLO from server starting");
-    }
-
-    @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
-    public static class ClientModEvents {
-        @SubscribeEvent
-        public static void onClientSetup(FMLClientSetupEvent event) {
-            LOGGER.info("HELLO FROM CLIENT SETUP");
-        }
-
-        @SubscribeEvent
-        public static void registerKeys(RegisterKeyMappingsEvent event) {
-            event.register(KeyBindings.OPEN_MAP_KEY);
-            event.register(KeyBindings.OPEN_WAYPOINTS_LIST_KEY);
-            event.register(KeyBindings.CREATE_WAYPOINT_KEY);
-        }
-
-        @SubscribeEvent
-        public static void registerOverlays(RegisterGuiOverlaysEvent event) {
-            event.registerAboveAll("compass_hud", CompassHud.INSTANCE);
-        }
+        WaypointSharingHandler.register();
+        LOGGER.info("Map 3d usseewa initialized on Fabric");
     }
 }

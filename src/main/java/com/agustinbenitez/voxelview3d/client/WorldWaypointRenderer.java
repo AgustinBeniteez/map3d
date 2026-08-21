@@ -3,39 +3,30 @@ package com.agustinbenitez.voxelview3d.client;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.vertex.*;
-import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import org.joml.Matrix4f;
 
 import net.minecraft.resources.ResourceLocation;
 import java.util.*;
 
-@Mod.EventBusSubscriber(modid = "voxelview3d", value = Dist.CLIENT)
 public class WorldWaypointRenderer {
 
-    @SubscribeEvent
-    public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
-
+    public static void render(WorldRenderContext context) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || ClientSettings.waypoints.isEmpty()) return;
 
-        Vec3 cameraPos = event.getCamera().getPosition();
-        PoseStack poseStack = event.getPoseStack();
+        Vec3 cameraPos = context.camera().getPosition();
+        PoseStack poseStack = context.matrixStack();
+        if (poseStack == null) return;
 
         poseStack.pushPose();
         
         // We render relative to camera, so we subtract cameraPos from waypoint pos
-        
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
+        BufferBuilder buf;
         
         // Render System Setup
         RenderSystem.enableDepthTest();
@@ -145,7 +136,7 @@ public class WorldWaypointRenderer {
                 }
                 
                 RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE);
-                buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+                buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
                 
                 int color = wp.color;
                 if ("dead".equals(wp.iconName)) {
@@ -158,7 +149,7 @@ public class WorldWaypointRenderer {
                 
                 float wInner = 0.2f;
                 VoxelMapRenderer.renderBox(buf, poseStack.last().pose(), rx, bottomY, rz, wInner, (float)beamHeight, wInner, r, g, b, alpha);
-                BufferUploader.drawWithShader(buf.end());
+                RenderBufferUtil.drawIfNotEmpty(buf);
                 RenderSystem.defaultBlendFunc();
             }
 
@@ -276,33 +267,31 @@ public class WorldWaypointRenderer {
         RenderSystem.depthMask(false);
         
         // 1. Draw Icon
-        ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+        ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
         RenderSystem.setShaderTexture(0, iconLoc);
         
         // Use white color for icon in world view (no tint)
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
+        BufferBuilder buf;
         
         // Icon size in local units (after scaling)
         // Scale is variable now, but local coords remain same relative to text
         float iconSize = 16.0f; 
         float iconY = -10.0f; // Above text (text is at 0), moved closer
         
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        buf.vertex(matrix4f, -iconSize/2, iconY - iconSize, 0).uv(0, 0).endVertex();
-        buf.vertex(matrix4f, -iconSize/2, iconY, 0).uv(0, 1).endVertex();
-        buf.vertex(matrix4f, iconSize/2, iconY, 0).uv(1, 1).endVertex();
-        buf.vertex(matrix4f, iconSize/2, iconY - iconSize, 0).uv(1, 0).endVertex();
-        BufferUploader.drawWithShader(buf.end());
+        buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+        buf.addVertex(matrix4f, -iconSize/2, iconY - iconSize, 0).setUv(0, 0);
+        buf.addVertex(matrix4f, -iconSize/2, iconY, 0).setUv(0, 1);
+        buf.addVertex(matrix4f, iconSize/2, iconY, 0).setUv(1, 1);
+        buf.addVertex(matrix4f, iconSize/2, iconY - iconSize, 0).setUv(1, 0);
+        RenderBufferUtil.drawIfNotEmpty(buf);
         
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         
         // 2. Draw Text
         // Use immediate buffer to ensure it draws with disabled depth test right now
-        var bufferSource = net.minecraft.client.renderer.MultiBufferSource.immediate(tess.getBuilder());
+        var bufferSource = Minecraft.getInstance().renderBuffers().bufferSource();
         
         // Use SEE_THROUGH to ensure it renders on top of everything (like the beam)
         font.drawInBatch(text, hOffset, 0, 0xFFFFFFFF, false, matrix4f, bufferSource, Font.DisplayMode.SEE_THROUGH, j, 15728880);

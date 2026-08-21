@@ -1,85 +1,71 @@
 plugins {
-    id 'eclipse'
-    id 'idea'
-    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    id 'fabric-loom' version '1.7.4'
+    id 'maven-publish'
 }
 
-group = 'com.example.voxelview3d'
-version = '1.0.0'
+group = 'com.agustinbenitez.voxelview3d'
+version = project.mod_version
 
 base {
-    archivesName = 'map-3d-usseewa'
+    archivesName = project.archives_base_name
 }
 
 java {
-    toolchain.languageVersion = JavaLanguageVersion.of(17)
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
 }
 
-minecraft {
-    mappings channel: 'official', version: '1.20.1'
-
+loom {
     runs {
-        configureEach {
-            workingDirectory project.file('run')
-            property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
-        }
-
         client {
-            property 'forge.enabledGameTestNamespaces', 'voxelview3d'
-        }
-
-        server {
-            property 'forge.enabledGameTestNamespaces', 'voxelview3d'
-            args '--nogui'
+            client()
+            name = 'Fabric Client'
+            runDir = 'run'
         }
     }
 }
 
-sourceSets.main.resources { srcDir 'src/generated/resources' }
-
 repositories {
+    mavenCentral()
 }
 
 dependencies {
-    minecraft 'net.minecraftforge:forge:1.20.1-47.2.0'
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 }
 
 tasks.named('processResources', ProcessResources).configure {
-    var replaceProperties = [
-            minecraft_version: '1.20.1',
-            minecraft_version_range: '[1.20.1,1.21)',
-            forge_version: '47.2.0',
-            forge_version_range: '[47,)',
-            loader_version_range: '[47,)',
-            mod_id: 'voxelview3d',
-            mod_name: 'Map 3d usseewa',
-            mod_license: 'All Rights Reserved',
-            mod_version: '1.0.0',
-            mod_authors: 'Agustin Benitez',
-            mod_description: 'Client-side 3D map renderer'
-    ]
-    inputs.properties replaceProperties
+    inputs.property 'version', project.version
+    inputs.property 'minecraft_version', project.minecraft_version
+    inputs.property 'loader_version', project.loader_version
 
-    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
-        expand replaceProperties + [project: project]
-    }
-}
-
-tasks.named('jar', Jar).configure {
-    manifest {
-        attributes([
-                "Specification-Title"     : "voxelview3d",
-                "Specification-Vendor"    : "voxelview3dsareus",
-                "Specification-Version"   : "1",
-                "Implementation-Title"    : project.name,
-                "Implementation-Version"  : project.jar.archiveVersion,
-                "Implementation-Vendor"   : "voxelview3dsareus",
-                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
-        ])
+    filesMatching('fabric.mod.json') {
+        expand(
+                version: project.version,
+                minecraft_version: project.minecraft_version,
+                loader_version: project.loader_version
+        )
     }
 }
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+tasks.named('jar', Jar).configure {
+    from('LICENSE') {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+}
+
+publishing {
+    publications {
+        create('mavenJava', MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
 }

@@ -2,12 +2,8 @@ package com.agustinbenitez.voxelview3d.world;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -19,12 +15,9 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 
-import com.agustinbenitez.voxelview3d.VoxelView3D;
-
 import com.agustinbenitez.voxelview3d.client.ClientSettings;
 import com.agustinbenitez.voxelview3d.client.VoxelMapScreen;
 
-@Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
 public class WorldHandler {
     private static final int QUEUE_REFRESH_INTERVAL_TICKS = 20;
     private static final int SCAN_INTERVAL_TICKS = 2;
@@ -52,11 +45,7 @@ public class WorldHandler {
         scanTickCounter = SCAN_INTERVAL_TICKS;
     }
 
-    @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
-
-        Minecraft mc = Minecraft.getInstance();
+    public static void onClientTick(Minecraft mc) {
         boolean mapIsOpen = mc.screen instanceof VoxelMapScreen;
 
         // The 3D scan is expensive and is useful only while its screen is visible.

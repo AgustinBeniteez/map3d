@@ -13,7 +13,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.Squid;
 import net.minecraft.world.entity.GlowSquid;
-import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
@@ -21,7 +20,6 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -30,15 +28,10 @@ import java.util.Map;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FurnaceBlock;
 import net.minecraft.world.level.block.LadderBlock;
-import net.minecraft.world.level.block.WoolCarpetBlock;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.entity.decoration.ItemFrame;
-import net.minecraft.world.entity.decoration.Painting;
-import net.minecraft.world.entity.decoration.PaintingVariant;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.core.Direction;
 import net.minecraft.core.BlockPos;
@@ -298,10 +291,10 @@ public class VoxelMapRenderer {
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
             float maxV = sprite.getV1();
-            buf.vertex(pose, x0, y_max, z0).uv(minU, minV).color(r, g, b, a).endVertex();
-            buf.vertex(pose, x0, y_max, z1).uv(minU, maxV).color(r, g, b, a).endVertex();
-            buf.vertex(pose, x1, y_max, z1).uv(maxU, maxV).color(r, g, b, a).endVertex();
-            buf.vertex(pose, x1, y_max, z0).uv(maxU, minV).color(r, g, b, a).endVertex();
+            buf.addVertex(pose, x0, y_max, z0).setUv(minU, minV).setColor(r, g, b, a);
+            buf.addVertex(pose, x0, y_max, z1).setUv(minU, maxV).setColor(r, g, b, a);
+            buf.addVertex(pose, x1, y_max, z1).setUv(maxU, maxV).setColor(r, g, b, a);
+            buf.addVertex(pose, x1, y_max, z0).setUv(maxU, minV).setColor(r, g, b, a);
         }
         
         // Bottom Face (y0) - Face Y- - Bit 2 (4)
@@ -311,10 +304,10 @@ public class VoxelMapRenderer {
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
             float maxV = sprite.getV1();
-            buf.vertex(pose, x1, y_min, z0).uv(minU, minV).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
-            buf.vertex(pose, x1, y_min, z1).uv(minU, maxV).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
-            buf.vertex(pose, x0, y_min, z1).uv(maxU, maxV).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
-            buf.vertex(pose, x0, y_min, z0).uv(maxU, minV).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
+            buf.addVertex(pose, x1, y_min, z0).setUv(minU, minV).setColor(r*0.5f, g*0.5f, b*0.5f, a);
+            buf.addVertex(pose, x1, y_min, z1).setUv(minU, maxV).setColor(r*0.5f, g*0.5f, b*0.5f, a);
+            buf.addVertex(pose, x0, y_min, z1).setUv(maxU, maxV).setColor(r*0.5f, g*0.5f, b*0.5f, a);
+            buf.addVertex(pose, x0, y_min, z0).setUv(maxU, minV).setColor(r*0.5f, g*0.5f, b*0.5f, a);
         }
         
         // North Face (z0) - Face Z- - Bit 4 (16)
@@ -324,10 +317,10 @@ public class VoxelMapRenderer {
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
             float maxV = sprite.getV1();
-            buf.vertex(pose, x1, y_max, z0).uv(minU, minV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x1, y_min, z0).uv(minU, maxV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x0, y_min, z0).uv(maxU, maxV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x0, y_max, z0).uv(maxU, minV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.addVertex(pose, x1, y_max, z0).setUv(minU, minV).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x1, y_min, z0).setUv(minU, maxV).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x0, y_min, z0).setUv(maxU, maxV).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x0, y_max, z0).setUv(maxU, minV).setColor(r*0.8f, g*0.8f, b*0.8f, a);
         }
         
         // South Face (z1) - Face Z+ - Bit 5 (32)
@@ -337,10 +330,10 @@ public class VoxelMapRenderer {
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
             float maxV = sprite.getV1();
-            buf.vertex(pose, x0, y_max, z1).uv(minU, minV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x0, y_min, z1).uv(minU, maxV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x1, y_min, z1).uv(maxU, maxV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x1, y_max, z1).uv(maxU, minV).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.addVertex(pose, x0, y_max, z1).setUv(minU, minV).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x0, y_min, z1).setUv(minU, maxV).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x1, y_min, z1).setUv(maxU, maxV).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x1, y_max, z1).setUv(maxU, minV).setColor(r*0.8f, g*0.8f, b*0.8f, a);
         }
         
         // West Face (x0) - Face X- - Bit 0 (1)
@@ -350,10 +343,10 @@ public class VoxelMapRenderer {
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
             float maxV = sprite.getV1();
-            buf.vertex(pose, x0, y_max, z0).uv(minU, minV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x0, y_min, z0).uv(minU, maxV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x0, y_min, z1).uv(maxU, maxV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x0, y_max, z1).uv(maxU, minV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.addVertex(pose, x0, y_max, z0).setUv(minU, minV).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x0, y_min, z0).setUv(minU, maxV).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x0, y_min, z1).setUv(maxU, maxV).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x0, y_max, z1).setUv(maxU, minV).setColor(r*0.6f, g*0.6f, b*0.6f, a);
         }
         
         // East Face (x1) - Face X+ - Bit 1 (2)
@@ -363,10 +356,10 @@ public class VoxelMapRenderer {
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
             float maxV = sprite.getV1();
-            buf.vertex(pose, x1, y_max, z1).uv(minU, minV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x1, y_min, z1).uv(minU, maxV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x1, y_min, z0).uv(maxU, maxV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x1, y_max, z0).uv(maxU, minV).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.addVertex(pose, x1, y_max, z1).setUv(minU, minV).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x1, y_min, z1).setUv(minU, maxV).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x1, y_min, z0).setUv(maxU, maxV).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x1, y_max, z0).setUv(maxU, minV).setColor(r*0.6f, g*0.6f, b*0.6f, a);
         }
     }
     
@@ -553,10 +546,10 @@ public class VoxelMapRenderer {
                 float u = Float.intBitsToFloat(vertices[i * 8 + 4]);
                 float v = Float.intBitsToFloat(vertices[i * 8 + 5]);
                 
-                buf.vertex(pose, (float)(x + vx), (float)(y + vy), (float)(z + vz))
-                   .uv(u, v)
-                   .color(qr, qg, qb, a)
-                   .endVertex();
+                buf.addVertex(pose, (float)(x + vx), (float)(y + vy), (float)(z + vz))
+                   .setUv(u, v)
+                   .setColor(qr, qg, qb, a)
+                   ;
             }
         }
     }
@@ -797,50 +790,50 @@ public class VoxelMapRenderer {
     private static void renderColorBox(BufferBuilder buf, Matrix4f pose, float x0, float y0, float z0, float x1, float y1, float z1, float r, float g, float b, float a, int faces) {
         // Bottom (4)
         if ((faces & 4) != 0) {
-            buf.vertex(pose, x0, y0, z0).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
-            buf.vertex(pose, x1, y0, z0).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
-            buf.vertex(pose, x1, y0, z1).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
-            buf.vertex(pose, x0, y0, z1).color(r*0.5f, g*0.5f, b*0.5f, a).endVertex();
+            buf.addVertex(pose, x0, y0, z0).setColor(r*0.5f, g*0.5f, b*0.5f, a);
+            buf.addVertex(pose, x1, y0, z0).setColor(r*0.5f, g*0.5f, b*0.5f, a);
+            buf.addVertex(pose, x1, y0, z1).setColor(r*0.5f, g*0.5f, b*0.5f, a);
+            buf.addVertex(pose, x0, y0, z1).setColor(r*0.5f, g*0.5f, b*0.5f, a);
         }
         
         // Top (8)
         if ((faces & 8) != 0) {
-            buf.vertex(pose, x0, y1, z0).color(r, g, b, a).endVertex();
-            buf.vertex(pose, x0, y1, z1).color(r, g, b, a).endVertex();
-            buf.vertex(pose, x1, y1, z1).color(r, g, b, a).endVertex();
-            buf.vertex(pose, x1, y1, z0).color(r, g, b, a).endVertex();
+            buf.addVertex(pose, x0, y1, z0).setColor(r, g, b, a);
+            buf.addVertex(pose, x0, y1, z1).setColor(r, g, b, a);
+            buf.addVertex(pose, x1, y1, z1).setColor(r, g, b, a);
+            buf.addVertex(pose, x1, y1, z0).setColor(r, g, b, a);
         }
         
         // West (x0) (1)
         if ((faces & 1) != 0) {
-            buf.vertex(pose, x0, y0, z0).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x0, y0, z1).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x0, y1, z1).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x0, y1, z0).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.addVertex(pose, x0, y0, z0).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x0, y0, z1).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x0, y1, z1).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x0, y1, z0).setColor(r*0.8f, g*0.8f, b*0.8f, a);
         }
         
         // East (x1) (2)
         if ((faces & 2) != 0) {
-            buf.vertex(pose, x1, y0, z0).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x1, y1, z0).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x1, y1, z1).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
-            buf.vertex(pose, x1, y0, z1).color(r*0.8f, g*0.8f, b*0.8f, a).endVertex();
+            buf.addVertex(pose, x1, y0, z0).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x1, y1, z0).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x1, y1, z1).setColor(r*0.8f, g*0.8f, b*0.8f, a);
+            buf.addVertex(pose, x1, y0, z1).setColor(r*0.8f, g*0.8f, b*0.8f, a);
         }
         
         // North (z0) (16)
         if ((faces & 16) != 0) {
-            buf.vertex(pose, x0, y0, z0).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x0, y1, z0).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x1, y1, z0).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x1, y0, z0).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.addVertex(pose, x0, y0, z0).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x0, y1, z0).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x1, y1, z0).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x1, y0, z0).setColor(r*0.6f, g*0.6f, b*0.6f, a);
         }
         
         // South (z1) (32)
         if ((faces & 32) != 0) {
-            buf.vertex(pose, x0, y0, z1).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x1, y0, z1).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x1, y1, z1).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
-            buf.vertex(pose, x0, y1, z1).color(r*0.6f, g*0.6f, b*0.6f, a).endVertex();
+            buf.addVertex(pose, x0, y0, z1).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x1, y0, z1).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x1, y1, z1).setColor(r*0.6f, g*0.6f, b*0.6f, a);
+            buf.addVertex(pose, x0, y1, z1).setColor(r*0.6f, g*0.6f, b*0.6f, a);
         }
     }
 
@@ -854,9 +847,7 @@ public class VoxelMapRenderer {
         
         ChunkPos playerChunk = player.chunkPosition();
         Map<ChunkPos, ChunkScanner.ScannedChunk> data = ChunkScanner.getData();
-
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
+        BufferBuilder buf;
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         
         // Lava Color: Bright Orange 0xFF6600
@@ -865,7 +856,7 @@ public class VoxelMapRenderer {
         float b = 0.0f;
         float alpha = 1.0f;
         
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         Matrix4f pose = poseStack.last().pose();
         
         // Iterate only loaded chunks within radius
@@ -885,16 +876,16 @@ public class VoxelMapRenderer {
                          float z2 = (float)(rz + 16.0);
                          float y = (float)planeY;
 
-                         buf.vertex(pose, x1, y, z1).color(r, g, b, alpha).endVertex();
-                         buf.vertex(pose, x1, y, z2).color(r, g, b, alpha).endVertex();
-                         buf.vertex(pose, x2, y, z2).color(r, g, b, alpha).endVertex();
-                         buf.vertex(pose, x2, y, z1).color(r, g, b, alpha).endVertex();
+                         buf.addVertex(pose, x1, y, z1).setColor(r, g, b, alpha);
+                         buf.addVertex(pose, x1, y, z2).setColor(r, g, b, alpha);
+                         buf.addVertex(pose, x2, y, z2).setColor(r, g, b, alpha);
+                         buf.addVertex(pose, x2, y, z1).setColor(r, g, b, alpha);
                      }
                 }
             }
         }
         
-        BufferUploader.drawWithShader(buf.end());
+        RenderBufferUtil.drawIfNotEmpty(buf);
     }
 
     private static void renderWaypoints(PoseStack poseStack, Player player, float cameraYaw, float cameraPitch, double cameraY) {
@@ -951,7 +942,7 @@ public class VoxelMapRenderer {
                 RenderSystem.disableDepthTest();
 
                 // --- Draw Icon ---
-                ResourceLocation iconLoc = new ResourceLocation("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+                ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
                 RenderSystem.setShader(GameRenderer::getPositionTexShader);
                 RenderSystem.setShaderTexture(0, iconLoc);
                 
@@ -966,17 +957,16 @@ public class VoxelMapRenderer {
                 float iconY = -2.0f; // Slightly above text
                 
                 // We need a new buffer for the icon
-                Tesselator tessIcon = Tesselator.getInstance();
-                BufferBuilder bufIcon = tessIcon.getBuilder();
-                bufIcon.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+                BufferBuilder bufIcon;
+                bufIcon = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
                 Matrix4f matrix = poseStack.last().pose();
                 
-                bufIcon.vertex(matrix, -iconSize/2, iconY - iconSize, 0).uv(0, 0).endVertex();
-                bufIcon.vertex(matrix, -iconSize/2, iconY, 0).uv(0, 1).endVertex();
-                bufIcon.vertex(matrix, iconSize/2, iconY, 0).uv(1, 1).endVertex();
-                bufIcon.vertex(matrix, iconSize/2, iconY - iconSize, 0).uv(1, 0).endVertex();
+                bufIcon.addVertex(matrix, -iconSize/2, iconY - iconSize, 0).setUv(0, 0);
+                bufIcon.addVertex(matrix, -iconSize/2, iconY, 0).setUv(0, 1);
+                bufIcon.addVertex(matrix, iconSize/2, iconY, 0).setUv(1, 1);
+                bufIcon.addVertex(matrix, iconSize/2, iconY - iconSize, 0).setUv(1, 0);
                 
-                BufferUploader.drawWithShader(bufIcon.end());
+                RenderBufferUtil.drawIfNotEmpty(bufIcon);
                 
                 // Reset Shader Color
                 RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -1007,7 +997,7 @@ public class VoxelMapRenderer {
         if (!(player instanceof AbstractClientPlayer)) return;
         
         AbstractClientPlayer abstractClientPlayer = (AbstractClientPlayer) player;
-        ResourceLocation skin = abstractClientPlayer.getSkinTextureLocation();
+        ResourceLocation skin = abstractClientPlayer.getSkin().texture();
         
         // Spectral Effect: Disable Depth Test to see through walls
         RenderSystem.disableDepthTest();
@@ -1023,9 +1013,7 @@ public class VoxelMapRenderer {
         if (isTopDown) {
              poseStack.mulPose(Axis.XP.rotationDegrees(90));
         }
-        
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
+        BufferBuilder buf;
         
         float headSize = 2.0f; 
         float borderSize = 2.2f; // Slightly larger for border (Spectral Glow)
@@ -1033,17 +1021,17 @@ public class VoxelMapRenderer {
         // 1. Render Spectral Glow (Cyan Border)
         // Use Inverted Hull but with Cyan color and transparency if desired
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         // Cyan: R=0, G=1, B=1. 
         renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, borderSize, 0.0f, 1.0f, 1.0f, 1.0f); // Cyan
-        BufferUploader.drawWithShader(buf.end());
+        RenderBufferUtil.drawIfNotEmpty(buf);
         
         // 2. Render Textured Head
         RenderSystem.setShaderTexture(0, skin);
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+        buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
         renderTexturedHead(buf, poseStack.last().pose(), 0, 0, 0, headSize);
-        BufferUploader.drawWithShader(buf.end());
+        RenderBufferUtil.drawIfNotEmpty(buf);
         
         poseStack.popPose();
         
@@ -1238,28 +1226,27 @@ public class VoxelMapRenderer {
         lastPickReducedDetail = reducedDetail;
         lastPickDetailRadiusSq = detailRadiusSq;
 
-        BufferBuilder buf = Tesselator.getInstance().getBuilder();
-
         Direction cullDirection = null;
 
-        renderColorChunkBatches(buf, pose, visibleChunks, centerX, centerZ, centerY,
+        renderColorChunkBatches(pose, visibleChunks, centerX, centerZ, centerY,
                 minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection,
                 reducedDetail, detailRadiusSq);
-        renderTexturedChunkBatches(buf, pose, visibleChunks, centerX, centerZ, centerY,
+        renderTexturedChunkBatches(pose, visibleChunks, centerX, centerZ, centerY,
                 minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection,
                 reducedDetail, detailRadiusSq);
-        renderChestChunkBatches(buf, pose, visibleChunks, centerX, centerZ, centerY,
+        renderChestChunkBatches(pose, visibleChunks, centerX, centerZ, centerY,
                 minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection,
                 reducedDetail, detailRadiusSq);
     }
 
-    private static void renderColorChunkBatches(BufferBuilder buf, Matrix4f pose,
+    private static void renderColorChunkBatches(Matrix4f pose,
                                                  List<Map.Entry<ChunkPos, ChunkScanner.ScannedChunk>> visibleChunks,
                                                  double centerX, double centerZ, double centerY,
                                                  int minBuildHeight, int minY, int maxY,
                                                  boolean isUnderground, Direction cullDirection,
                                                  boolean reducedDetail, double detailRadiusSq) {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        BufferBuilder buf = null;
         boolean building = false;
         int batchedBlocks = 0;
 
@@ -1270,12 +1257,12 @@ public class VoxelMapRenderer {
 
             int blockCount = chunkData.positions.length;
             if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
-                BufferUploader.drawWithShader(buf.end());
+                RenderBufferUtil.drawIfNotEmpty(buf);
                 building = false;
                 batchedBlocks = 0;
             }
             if (!building) {
-                buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+                buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
                 building = true;
             }
 
@@ -1285,10 +1272,10 @@ public class VoxelMapRenderer {
             batchedBlocks += blockCount;
         }
 
-        if (building) BufferUploader.drawWithShader(buf.end());
+        if (building) RenderBufferUtil.drawIfNotEmpty(buf);
     }
 
-    private static void renderTexturedChunkBatches(BufferBuilder buf, Matrix4f pose,
+    private static void renderTexturedChunkBatches(Matrix4f pose,
                                                     List<Map.Entry<ChunkPos, ChunkScanner.ScannedChunk>> visibleChunks,
                                                     double centerX, double centerZ, double centerY,
                                                     int minBuildHeight, int minY, int maxY,
@@ -1296,6 +1283,7 @@ public class VoxelMapRenderer {
                                                     boolean reducedDetail, double detailRadiusSq) {
         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
         RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
+        BufferBuilder buf = null;
         boolean building = false;
         int batchedBlocks = 0;
 
@@ -1306,12 +1294,12 @@ public class VoxelMapRenderer {
 
             int blockCount = chunkData.positions.length;
             if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
-                BufferUploader.drawWithShader(buf.end());
+                RenderBufferUtil.drawIfNotEmpty(buf);
                 building = false;
                 batchedBlocks = 0;
             }
             if (!building) {
-                buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+                buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
                 building = true;
             }
 
@@ -1321,10 +1309,10 @@ public class VoxelMapRenderer {
             batchedBlocks += blockCount;
         }
 
-        if (building) BufferUploader.drawWithShader(buf.end());
+        if (building) RenderBufferUtil.drawIfNotEmpty(buf);
     }
 
-    private static void renderChestChunkBatches(BufferBuilder buf, Matrix4f pose,
+    private static void renderChestChunkBatches(Matrix4f pose,
                                                  List<Map.Entry<ChunkPos, ChunkScanner.ScannedChunk>> visibleChunks,
                                                  double centerX, double centerZ, double centerY,
                                                  int minBuildHeight, int minY, int maxY,
@@ -1332,6 +1320,7 @@ public class VoxelMapRenderer {
                                                  boolean reducedDetail, double detailRadiusSq) {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         RenderSystem.disableCull();
+        BufferBuilder buf = null;
         boolean building = false;
         int batchedBlocks = 0;
 
@@ -1342,12 +1331,12 @@ public class VoxelMapRenderer {
 
             int blockCount = chunkData.positions.length;
             if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
-                BufferUploader.drawWithShader(buf.end());
+                RenderBufferUtil.drawIfNotEmpty(buf);
                 building = false;
                 batchedBlocks = 0;
             }
             if (!building) {
-                buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+                buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
                 building = true;
             }
 
@@ -1357,7 +1346,7 @@ public class VoxelMapRenderer {
             batchedBlocks += blockCount;
         }
 
-        if (building) BufferUploader.drawWithShader(buf.end());
+        if (building) RenderBufferUtil.drawIfNotEmpty(buf);
         RenderSystem.enableCull();
     }
 
@@ -1537,7 +1526,7 @@ public class VoxelMapRenderer {
                 }
 
                 // Transparency: Make nearby blocks transparent so we can see through walls
-                // User request: "transparenté lo que este cerca no todo"
+                // User request: "transparentÃ© lo que este cerca no todo"
                 double transStart = 2.0;
                 double transEnd = 8.0;
 
@@ -3118,29 +3107,29 @@ public class VoxelMapRenderer {
 
         if (iconsByTexture.isEmpty()) return;
 
-        BufferBuilder buf = Tesselator.getInstance().getBuilder();
+        BufferBuilder buf;
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableCull();
         RenderSystem.disableDepthTest();
 
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         for (List<EntityIcon> icons : iconsByTexture.values()) {
             for (EntityIcon icon : icons) {
                 appendEntityIconBorder(buf, poseStack, icon, cameraYaw, cameraPitch);
             }
         }
-        BufferUploader.drawWithShader(buf.end());
+        RenderBufferUtil.drawIfNotEmpty(buf);
 
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
         for (Map.Entry<ResourceLocation, List<EntityIcon>> entry : iconsByTexture.entrySet()) {
             RenderSystem.setShaderTexture(0, entry.getKey());
-            buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+            buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
             for (EntityIcon icon : entry.getValue()) {
                 appendEntityIconTexture(buf, poseStack, icon, cameraYaw, cameraPitch);
             }
-            BufferUploader.drawWithShader(buf.end());
+            RenderBufferUtil.drawIfNotEmpty(buf);
         }
 
         RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -3187,10 +3176,10 @@ public class VoxelMapRenderer {
         poseStack.mulPose(Axis.YP.rotationDegrees(-cameraYaw));
         poseStack.mulPose(Axis.XP.rotationDegrees(-cameraPitch));
         Matrix4f pose = poseStack.last().pose();
-        buf.vertex(pose, -half, -half, 0.0f).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, -half, half, 0.0f).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, half, half, 0.0f).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, half, -half, 0.0f).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, -half, -half, 0.0f).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, -half, half, 0.0f).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, half, half, 0.0f).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, half, -half, 0.0f).setColor(red, green, blue, alpha);
         poseStack.popPose();
     }
 
@@ -3204,10 +3193,10 @@ public class VoxelMapRenderer {
         poseStack.mulPose(Axis.YP.rotationDegrees(-cameraYaw));
         poseStack.mulPose(Axis.XP.rotationDegrees(-cameraPitch));
         Matrix4f pose = poseStack.last().pose();
-        buf.vertex(pose, -half, -half, -0.01f).uv(icon.uMin, icon.vMax).endVertex();
-        buf.vertex(pose, -half, half, -0.01f).uv(icon.uMin, icon.vMin).endVertex();
-        buf.vertex(pose, half, half, -0.01f).uv(icon.uMax, icon.vMin).endVertex();
-        buf.vertex(pose, half, -half, -0.01f).uv(icon.uMax, icon.vMax).endVertex();
+        buf.addVertex(pose, -half, -half, -0.01f).setUv(icon.uMin, icon.vMax);
+        buf.addVertex(pose, -half, half, -0.01f).setUv(icon.uMin, icon.vMin);
+        buf.addVertex(pose, half, half, -0.01f).setUv(icon.uMax, icon.vMin);
+        buf.addVertex(pose, half, -half, -0.01f).setUv(icon.uMax, icon.vMax);
         poseStack.popPose();
     }
 
@@ -3226,10 +3215,10 @@ public class VoxelMapRenderer {
         
         // Bit 3: Up (+y) - Top Face
         if ((exposedFaces & 8) != 0) {
-            buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.addVertex(pose, minX, maxY, minZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, minX, maxY, maxZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, maxX, maxY, maxZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, maxX, maxY, minZ).setColor(red, green, blue, alpha);
             
             // Render Borders on Top Face
             // Border color: Black Opaque (for visibility)
@@ -3240,46 +3229,46 @@ public class VoxelMapRenderer {
             // West Edge (Bit 0)
             if ((exposedFaces & 1) != 0) {
                  // CCW Order: Top-Left -> Bottom-Left -> Bottom-Right -> Top-Right
-                 buf.vertex(pose, minX, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
-                 buf.vertex(pose, minX, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
-                 buf.vertex(pose, minX + bSize, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
-                 buf.vertex(pose, minX + bSize, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
+                 buf.addVertex(pose, minX, maxY + yOff, minZ).setColor(br, bg, bb, ba);
+                 buf.addVertex(pose, minX, maxY + yOff, maxZ).setColor(br, bg, bb, ba);
+                 buf.addVertex(pose, minX + bSize, maxY + yOff, maxZ).setColor(br, bg, bb, ba);
+                 buf.addVertex(pose, minX + bSize, maxY + yOff, minZ).setColor(br, bg, bb, ba);
             }
             
             // East Edge (Bit 1)
             if ((exposedFaces & 2) != 0) {
                  // CCW Order
-                 buf.vertex(pose, maxX - bSize, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
-                 buf.vertex(pose, maxX - bSize, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
-                 buf.vertex(pose, maxX, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
-                 buf.vertex(pose, maxX, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
+                 buf.addVertex(pose, maxX - bSize, maxY + yOff, minZ).setColor(br, bg, bb, ba);
+                 buf.addVertex(pose, maxX - bSize, maxY + yOff, maxZ).setColor(br, bg, bb, ba);
+                 buf.addVertex(pose, maxX, maxY + yOff, maxZ).setColor(br, bg, bb, ba);
+                 buf.addVertex(pose, maxX, maxY + yOff, minZ).setColor(br, bg, bb, ba);
             }
             
             // North Edge (Bit 4)
             if ((exposedFaces & 16) != 0) {
                   // CCW Order
-                  buf.vertex(pose, minX, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
-                  buf.vertex(pose, minX, maxY + yOff, minZ + bSize).color(br, bg, bb, ba).endVertex();
-                  buf.vertex(pose, maxX, maxY + yOff, minZ + bSize).color(br, bg, bb, ba).endVertex();
-                  buf.vertex(pose, maxX, maxY + yOff, minZ).color(br, bg, bb, ba).endVertex();
+                  buf.addVertex(pose, minX, maxY + yOff, minZ).setColor(br, bg, bb, ba);
+                  buf.addVertex(pose, minX, maxY + yOff, minZ + bSize).setColor(br, bg, bb, ba);
+                  buf.addVertex(pose, maxX, maxY + yOff, minZ + bSize).setColor(br, bg, bb, ba);
+                  buf.addVertex(pose, maxX, maxY + yOff, minZ).setColor(br, bg, bb, ba);
             }
             
             // South Edge (Bit 5)
             if ((exposedFaces & 32) != 0) {
                   // CCW Order
-                  buf.vertex(pose, minX, maxY + yOff, maxZ - bSize).color(br, bg, bb, ba).endVertex();
-                  buf.vertex(pose, minX, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
-                  buf.vertex(pose, maxX, maxY + yOff, maxZ).color(br, bg, bb, ba).endVertex();
-                  buf.vertex(pose, maxX, maxY + yOff, maxZ - bSize).color(br, bg, bb, ba).endVertex();
+                  buf.addVertex(pose, minX, maxY + yOff, maxZ - bSize).setColor(br, bg, bb, ba);
+                  buf.addVertex(pose, minX, maxY + yOff, maxZ).setColor(br, bg, bb, ba);
+                  buf.addVertex(pose, maxX, maxY + yOff, maxZ).setColor(br, bg, bb, ba);
+                  buf.addVertex(pose, maxX, maxY + yOff, maxZ - bSize).setColor(br, bg, bb, ba);
             }
         }
         
         // Bit 2: Down (-y) - Bottom Face
         if ((exposedFaces & 4) != 0) {
-            buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.addVertex(pose, maxX, minY, minZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, maxX, minY, maxZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, minX, minY, maxZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, minX, minY, minZ).setColor(red, green, blue, alpha);
         }
         
         // Bit 4: North (-z) - Front/Back? 
@@ -3292,40 +3281,40 @@ public class VoxelMapRenderer {
         
         // So North (-z) corresponds to "Front" in renderBox code?
         // Let's check renderBox "Front":
-        // buf.vertex(pose, maxX, maxY, minZ)...
+        // buf.addVertex(pose, maxX, maxY, minZ)...
         // Yes, all Z are minZ. So "Front" is North face (-z).
         
         if ((exposedFaces & 16) != 0) { // North
-            buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.addVertex(pose, maxX, maxY, minZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, maxX, minY, minZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, minX, minY, minZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, minX, maxY, minZ).setColor(red, green, blue, alpha);
         }
         
         // Bit 5: South (+z) - Back
         if ((exposedFaces & 32) != 0) { // South
-            buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.addVertex(pose, minX, maxY, maxZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, minX, minY, maxZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, maxX, minY, maxZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, maxX, maxY, maxZ).setColor(red, green, blue, alpha);
         }
         
         // Bit 0: West (-x) - Left?
         // In renderBox "Left": all X are minX. Yes, West.
         if ((exposedFaces & 1) != 0) { // West
-            buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+            buf.addVertex(pose, minX, maxY, minZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, minX, minY, minZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, minX, minY, maxZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, minX, maxY, maxZ).setColor(red, green, blue, alpha);
         }
         
         // Bit 1: East (+x) - Right?
         // In renderBox "Right": all X are maxX. Yes, East.
         if ((exposedFaces & 2) != 0) { // East
-            buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-            buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+            buf.addVertex(pose, maxX, maxY, maxZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, maxX, minY, maxZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, maxX, minY, minZ).setColor(red, green, blue, alpha);
+            buf.addVertex(pose, maxX, maxY, minZ).setColor(red, green, blue, alpha);
         }
     }
 
@@ -3379,40 +3368,40 @@ public class VoxelMapRenderer {
         int alpha = (int)(a * 255);
 
         // Top
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, minX, maxY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, maxY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, maxY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, maxY, minZ).setColor(red, green, blue, alpha);
         
         // Bottom
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, maxX, minY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, minZ).setColor(red, green, blue, alpha);
         
         // Front
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, maxX, maxY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, maxY, minZ).setColor(red, green, blue, alpha);
         
         // Back
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, minX, maxY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, maxY, maxZ).setColor(red, green, blue, alpha);
         
         // Left
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, minX, maxY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, maxY, maxZ).setColor(red, green, blue, alpha);
         
         // Right
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, maxX, maxY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, maxY, minZ).setColor(red, green, blue, alpha);
     }
     
     private static void renderTexturedHead(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float size) {
@@ -3430,50 +3419,50 @@ public class VoxelMapRenderer {
         // Top
         float uMin = 8 * uScale; float uMax = 16 * uScale;
         float vMin = 0 * vScale; float vMax = 8 * vScale;
-        buf.vertex(pose, minX, maxY, minZ).uv(uMin, vMin).endVertex();
-        buf.vertex(pose, minX, maxY, maxZ).uv(uMin, vMax).endVertex();
-        buf.vertex(pose, maxX, maxY, maxZ).uv(uMax, vMax).endVertex();
-        buf.vertex(pose, maxX, maxY, minZ).uv(uMax, vMin).endVertex();
+        buf.addVertex(pose, minX, maxY, minZ).setUv(uMin, vMin);
+        buf.addVertex(pose, minX, maxY, maxZ).setUv(uMin, vMax);
+        buf.addVertex(pose, maxX, maxY, maxZ).setUv(uMax, vMax);
+        buf.addVertex(pose, maxX, maxY, minZ).setUv(uMax, vMin);
         
         // Bottom
         uMin = 16 * uScale; uMax = 24 * uScale;
         vMin = 0 * vScale; vMax = 8 * vScale;
-        buf.vertex(pose, maxX, minY, minZ).uv(uMin, vMin).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).uv(uMin, vMax).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).uv(uMax, vMax).endVertex();
-        buf.vertex(pose, minX, minY, minZ).uv(uMax, vMin).endVertex();
+        buf.addVertex(pose, maxX, minY, minZ).setUv(uMin, vMin);
+        buf.addVertex(pose, maxX, minY, maxZ).setUv(uMin, vMax);
+        buf.addVertex(pose, minX, minY, maxZ).setUv(uMax, vMax);
+        buf.addVertex(pose, minX, minY, minZ).setUv(uMax, vMin);
         
         // Front
         uMin = 8 * uScale; uMax = 16 * uScale;
         vMin = 8 * vScale; vMax = 16 * vScale;
-        buf.vertex(pose, maxX, maxY, minZ).uv(uMin, vMin).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).uv(uMin, vMax).endVertex();
-        buf.vertex(pose, minX, minY, minZ).uv(uMax, vMax).endVertex();
-        buf.vertex(pose, minX, maxY, minZ).uv(uMax, vMin).endVertex();
+        buf.addVertex(pose, maxX, maxY, minZ).setUv(uMin, vMin);
+        buf.addVertex(pose, maxX, minY, minZ).setUv(uMin, vMax);
+        buf.addVertex(pose, minX, minY, minZ).setUv(uMax, vMax);
+        buf.addVertex(pose, minX, maxY, minZ).setUv(uMax, vMin);
         
         // Back
         uMin = 24 * uScale; uMax = 32 * uScale;
         vMin = 8 * vScale; vMax = 16 * vScale;
-        buf.vertex(pose, minX, maxY, maxZ).uv(uMin, vMin).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).uv(uMin, vMax).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).uv(uMax, vMax).endVertex();
-        buf.vertex(pose, maxX, maxY, maxZ).uv(uMax, vMin).endVertex();
+        buf.addVertex(pose, minX, maxY, maxZ).setUv(uMin, vMin);
+        buf.addVertex(pose, minX, minY, maxZ).setUv(uMin, vMax);
+        buf.addVertex(pose, maxX, minY, maxZ).setUv(uMax, vMax);
+        buf.addVertex(pose, maxX, maxY, maxZ).setUv(uMax, vMin);
         
         // Left
         uMin = 16 * uScale; uMax = 24 * uScale;
         vMin = 8 * vScale; vMax = 16 * vScale;
-        buf.vertex(pose, minX, maxY, minZ).uv(uMin, vMin).endVertex();
-        buf.vertex(pose, minX, minY, minZ).uv(uMin, vMax).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).uv(uMax, vMax).endVertex();
-        buf.vertex(pose, minX, maxY, maxZ).uv(uMax, vMin).endVertex();
+        buf.addVertex(pose, minX, maxY, minZ).setUv(uMin, vMin);
+        buf.addVertex(pose, minX, minY, minZ).setUv(uMin, vMax);
+        buf.addVertex(pose, minX, minY, maxZ).setUv(uMax, vMax);
+        buf.addVertex(pose, minX, maxY, maxZ).setUv(uMax, vMin);
         
         // Right
         uMin = 0 * uScale; uMax = 8 * uScale;
         vMin = 8 * vScale; vMax = 16 * vScale;
-        buf.vertex(pose, maxX, maxY, maxZ).uv(uMin, vMin).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).uv(uMin, vMax).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).uv(uMax, vMax).endVertex();
-        buf.vertex(pose, maxX, maxY, minZ).uv(uMax, vMin).endVertex();
+        buf.addVertex(pose, maxX, maxY, maxZ).setUv(uMin, vMin);
+        buf.addVertex(pose, maxX, minY, maxZ).setUv(uMin, vMax);
+        buf.addVertex(pose, maxX, minY, minZ).setUv(uMax, vMax);
+        buf.addVertex(pose, maxX, maxY, minZ).setUv(uMax, vMin);
     }
     
     private static void renderInvertedColorBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float red, float green, float blue, float alpha) {
@@ -3487,40 +3476,40 @@ public class VoxelMapRenderer {
         // Reverse winding order (3, 2, 1, 0) for inverted hull effect
         
         // Top
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, maxX, maxY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, maxY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, maxY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, maxY, minZ).setColor(red, green, blue, alpha);
         
         // Bottom
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, minX, minY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, minZ).setColor(red, green, blue, alpha);
         
         // Front
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, minX, maxY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, maxY, minZ).setColor(red, green, blue, alpha);
         
         // Back
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, maxX, maxY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, maxY, maxZ).setColor(red, green, blue, alpha);
         
         // Left
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, minX, maxY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, minY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, minX, maxY, minZ).setColor(red, green, blue, alpha);
         
         // Right
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.addVertex(pose, maxX, maxY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, minZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, minY, maxZ).setColor(red, green, blue, alpha);
+        buf.addVertex(pose, maxX, maxY, maxZ).setColor(red, green, blue, alpha);
     }
 
     private static void renderInvertedColorBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float size, float red, float green, float blue, float alpha) {
@@ -3548,9 +3537,9 @@ public class VoxelMapRenderer {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         RenderSystem.lineWidth(3.0f);
 
-        BufferBuilder buf = Tesselator.getInstance().getBuilder();
+        BufferBuilder buf;
         Matrix4f pose = poseStack.last().pose();
-        buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+        buf = Tesselator.getInstance().begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
 
         appendOutlineLine(buf, pose, x0, y0, z0, x1, y0, z0);
         appendOutlineLine(buf, pose, x1, y0, z0, x1, y0, z1);
@@ -3565,7 +3554,7 @@ public class VoxelMapRenderer {
         appendOutlineLine(buf, pose, x1, y0, z1, x1, y1, z1);
         appendOutlineLine(buf, pose, x0, y0, z1, x0, y1, z1);
 
-        BufferUploader.drawWithShader(buf.end());
+        RenderBufferUtil.drawIfNotEmpty(buf);
         RenderSystem.lineWidth(1.0f);
         RenderSystem.depthMask(true);
         RenderSystem.enableDepthTest();
@@ -3575,8 +3564,8 @@ public class VoxelMapRenderer {
     private static void appendOutlineLine(BufferBuilder buf, Matrix4f pose,
                                           float x0, float y0, float z0,
                                           float x1, float y1, float z1) {
-        buf.vertex(pose, x0, y0, z0).color(0, 255, 255, 255).endVertex();
-        buf.vertex(pose, x1, y1, z1).color(0, 255, 255, 255).endVertex();
+        buf.addVertex(pose, x0, y0, z0).setColor(0, 255, 255, 255);
+        buf.addVertex(pose, x1, y1, z1).setColor(0, 255, 255, 255);
     }
 
     private static void renderChunkGrid(PoseStack poseStack, Player player, int radius) {
@@ -3586,14 +3575,12 @@ public class VoxelMapRenderer {
         double cz = player.getZ();
         
         ChunkPos centerChunk = player.chunkPosition();
-        
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
+        BufferBuilder buf;
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         RenderSystem.lineWidth(2.0f);
         
         // Use LINES mode
-        buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+        buf = Tesselator.getInstance().begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
         Matrix4f pose = poseStack.last().pose();
         
         int minChunkX = centerChunk.x - radius;
@@ -3615,8 +3602,8 @@ public class VoxelMapRenderer {
              double rzMin = worldZMin - cz;
              double rzMax = worldZMax - cz;
              
-             buf.vertex(pose, (float)rx, 0, (float)rzMin).color(r, g, b, a).endVertex();
-             buf.vertex(pose, (float)rx, 0, (float)rzMax).color(r, g, b, a).endVertex();
+             buf.addVertex(pose, (float)rx, 0, (float)rzMin).setColor(r, g, b, a);
+             buf.addVertex(pose, (float)rx, 0, (float)rzMax).setColor(r, g, b, a);
         }
         
         // Horizontal lines (X-axis lines, varying Z)
@@ -3630,11 +3617,11 @@ public class VoxelMapRenderer {
              double rxMin = worldXMin - cx;
              double rxMax = worldXMax - cx;
              
-             buf.vertex(pose, (float)rxMin, 0, (float)rz).color(r, g, b, a).endVertex();
-             buf.vertex(pose, (float)rxMax, 0, (float)rz).color(r, g, b, a).endVertex();
+             buf.addVertex(pose, (float)rxMin, 0, (float)rz).setColor(r, g, b, a);
+             buf.addVertex(pose, (float)rxMax, 0, (float)rz).setColor(r, g, b, a);
         }
         
-        BufferUploader.drawWithShader(buf.end());
+        RenderBufferUtil.drawIfNotEmpty(buf);
         RenderSystem.lineWidth(1.0f);
     }
 }
