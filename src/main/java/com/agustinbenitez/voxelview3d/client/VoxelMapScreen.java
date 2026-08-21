@@ -10,6 +10,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
@@ -191,9 +192,6 @@ public class VoxelMapScreen extends Screen {
                          texture = isOn ? textureOn : textureOff;
                     }
                     
-                    RenderSystem.setShaderTexture(0, texture);
-                    RenderSystem.enableBlend();
-                    
                     // Draw background if hovered
                     if (this.isHovered) {
                          guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x40FFFFFF);
@@ -201,8 +199,8 @@ public class VoxelMapScreen extends Screen {
                     
                     // Draw icon centered
                     int iconSize = width - 4;
-                    guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
-                    RenderSystem.disableBlend();
+                    guiGraphics.blit(RenderPipelines.GUI_TEXTURED, texture, getX() + 2, getY() + 2,
+                            0, 0, iconSize, iconSize, iconSize, iconSize);
                     
                     // Tooltip logic removed from here to fix scaling issue
 
@@ -240,8 +238,8 @@ public class VoxelMapScreen extends Screen {
         int minY = -64;
         int maxY = 320;
         if (this.minecraft.level != null) {
-            minY = this.minecraft.level.getMinBuildHeight();
-            maxY = this.minecraft.level.getMaxBuildHeight();
+            minY = this.minecraft.level.getMinY();
+            maxY = this.minecraft.level.getMaxY();
         }
         
         // Slider moved to left, below settings button (Settings at 10, 10, size 20)
@@ -277,13 +275,14 @@ public class VoxelMapScreen extends Screen {
                  // Render Player Face
                  if (minecraft.player != null) {
                      ResourceLocation skin = minecraft.getConnection().getPlayerInfo(minecraft.player.getUUID()).getSkin().texture();
-                     RenderSystem.setShaderTexture(0, skin);
                      // Head is at u=8, v=8, size=8x8.
                      // Blit: x, y, size, size, u, v, uWidth, vHeight, textureWidth, textureHeight
-                     guiGraphics.blit(skin, getX() + 2, getY() + 2, 16, 16, 8.0f, 8.0f, 8, 8, 64, 64);
+                     guiGraphics.blit(RenderPipelines.GUI_TEXTURED, skin, getX() + 2, getY() + 2,
+                             8.0f, 8.0f, 16, 16, 8, 8, 64, 64);
                      
                      // Draw 2nd layer (Hat)
-                     guiGraphics.blit(skin, getX() + 2, getY() + 2, 16, 16, 40.0f, 8.0f, 8, 8, 64, 64);
+                     guiGraphics.blit(RenderPipelines.GUI_TEXTURED, skin, getX() + 2, getY() + 2,
+                             40.0f, 8.0f, 16, 16, 8, 8, 64, 64);
                  }
                  
                  // Draw "Go" Text
@@ -486,9 +485,9 @@ public class VoxelMapScreen extends Screen {
                 // Draw Icon based on dimension
                 ResourceLocation texture = getDimensionIcon(currentDimensionFilter);
                 
-                RenderSystem.setShaderTexture(0, texture);
                 // Draw 16x16 icon centered in 20x20 button
-                guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, 16, 16, 16, 16);
+                guiGraphics.blit(RenderPipelines.GUI_TEXTURED, texture, getX() + 2, getY() + 2,
+                        0, 0, 16, 16, 16, 16);
                 
                 // Check for duplicates of same type
                 List<String> dims = getAvailableDimensions();
@@ -505,15 +504,15 @@ public class VoxelMapScreen extends Screen {
                     int idx = sameTypeDims.indexOf(currentDimensionFilter);
                     if (idx >= 0) {
                         String num = String.valueOf(idx + 1);
-                        PoseStack poseStack = guiGraphics.pose();
-                        poseStack.pushPose();
+                        var poseStack = guiGraphics.pose();
+                        poseStack.pushMatrix();
                         // Position in bottom right corner
                         // Button is 20x20. Text is small.
                         // Translate to x+14, y+12
-                        poseStack.translate(getX() + 12, getY() + 12, 200); 
-                        poseStack.scale(0.7f, 0.7f, 1f);
+                        poseStack.translate(getX() + 12, getY() + 12);
+                        poseStack.scale(0.7f, 0.7f);
                         guiGraphics.drawString(font, num, 0, 0, 0xFFFFFF, true);
-                        poseStack.popPose();
+                        poseStack.popMatrix();
                     }
                 }
             }
@@ -623,10 +622,8 @@ public class VoxelMapScreen extends Screen {
                 
                 // Draw Icon
                 ResourceLocation icon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/deletehover.png");
-                RenderSystem.setShaderTexture(0, icon);
-                RenderSystem.enableBlend();
-                guiGraphics.blit(icon, getX() + 5, getY() + 2, 0, 0, 16, 16, 16, 16);
-                RenderSystem.disableBlend();
+                guiGraphics.blit(RenderPipelines.GUI_TEXTURED, icon, getX() + 5, getY() + 2,
+                        0, 0, 16, 16, 16, 16);
                 
                 // Draw Text (Red)
                 guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2 + 10, getY() + (height - 8) / 2, 0xFFFF5555);
@@ -1256,31 +1253,32 @@ public class VoxelMapScreen extends Screen {
         // super.render() would blur the map and modal contents drawn below.
         this.renderTransparentBackground(guiGraphics);
         
-        PoseStack poseStack = guiGraphics.pose();
-        poseStack.pushPose();
+        PoseStack mapPoseStack = new PoseStack();
+        mapPoseStack.pushPose();
         
         // Center on screen
-        poseStack.translate(this.width / 2.0 + panX, this.height / 2.0 + panY, 600);
+        // Keep the 3D map inside Minecraft's 1.21.8 GUI depth range.
+        mapPoseStack.translate(this.width / 2.0 + panX, this.height / 2.0 + panY, 600);
         
         // Use shared renderer
         if (!showWaypointModal && !showSettingsModal) {
             float pitch = ClientSettings.isTopDownView ? 90.0f : cameraPitch;
-            VoxelMapRenderer.renderMap(poseStack, zoom, pitch, cameraYaw, false,
+            RenderBufferUtil.setScreenSpace(true);
+            RenderBufferUtil.clearDepth();
+            VoxelMapRenderer.renderMap(mapPoseStack, zoom, pitch, cameraYaw, false,
                     ClientSettings.renderDistance, selectedMapBlock);
+            RenderBufferUtil.setScreenSpace(false);
         }
-        
-        // Clear depth buffer to ensure UI draws cleanly on top of the 3D map
-        RenderSystem.depthMask(true);
-        RenderSystem.clear(256, Minecraft.ON_OSX);
-        
-        poseStack.popPose();
+
+        mapPoseStack.popPose();
         
         // Start UI Layer (Higher Z-index to sit above the map)
-        poseStack.pushPose();
+        var guiPose = guiGraphics.pose();
+        guiPose.pushMatrix();
         
         // Apply HUD Scaling
         float scale = getHudScale();
-        poseStack.scale(scale, scale, 1.0f);
+        guiPose.scale(scale, scale);
         
         int effectiveWidth = (int)(this.width / scale);
         int effectiveHeight = (int)(this.height / scale);
@@ -1292,8 +1290,6 @@ public class VoxelMapScreen extends Screen {
         int scaledMouseX = (int)(mouseX / scale);
         int scaledMouseY = (int)(mouseY / scale);
 
-        poseStack.translate(0, 0, 800);
-        
         // Draw Bottom Menu Background
         int menuHeight = 35;
         int menuY = effectiveHeight - menuHeight;
@@ -1322,8 +1318,8 @@ public class VoxelMapScreen extends Screen {
             int renderY = btnY - (renderSize - btnSize) / 2;
             
             ResourceLocation settingsIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/settings.png");
-            RenderSystem.setShaderTexture(0, settingsIcon);
-            guiGraphics.blit(settingsIcon, renderX, renderY, 0, 0, renderSize, renderSize, renderSize, renderSize);
+            guiGraphics.blit(RenderPipelines.GUI_TEXTURED, settingsIcon, renderX, renderY,
+                    0, 0, renderSize, renderSize, renderSize, renderSize);
             
             // Draw Y value below Layer Slider
              int currentY = ClientMapData.getInstance().getCutY();
@@ -1341,10 +1337,8 @@ public class VoxelMapScreen extends Screen {
         if (!showWaypointModal && !showSettingsModal) {
             // Draw Zoom Icon
             ResourceLocation zoomIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/zoom.png");
-            RenderSystem.setShaderTexture(0, zoomIcon);
-            RenderSystem.enableBlend();
-            guiGraphics.blit(zoomIcon, effectiveWidth - 100, menuY + 6, 0, 0, 16, 16, 16, 16);
-            RenderSystem.disableBlend();
+            guiGraphics.blit(RenderPipelines.GUI_TEXTURED, zoomIcon, effectiveWidth - 100, menuY + 6,
+                    0, 0, 16, 16, 16, 16);
 
             Component zoomText = Component.translatable("voxelview3d.zoom", String.format("%.1f", zoom));
             guiGraphics.drawString(this.font, zoomText, effectiveWidth - 80, menuY + 10, 0xFFFFFFFF);
@@ -1406,7 +1400,7 @@ public class VoxelMapScreen extends Screen {
             renderModalOverlays(guiGraphics, scaledMouseX, scaledMouseY);
         }
         
-        poseStack.popPose();
+        guiPose.popMatrix();
         
         // Render Tooltips (outside scaled context)
         if (!showWaypointModal && !showSettingsModal && toggleNightMode != null && toggleNightMode.isHovered()) {
@@ -1416,11 +1410,8 @@ public class VoxelMapScreen extends Screen {
                  tooltip = Component.translatable("voxelview3d.cave_mode");
              }
              
-             // Ensure Z-index is higher than menu (800)
-             poseStack.pushPose();
-             poseStack.translate(0, 0, 1000);
-             guiGraphics.renderTooltip(this.font, tooltip, mouseX, mouseY);
-             poseStack.popPose();
+             guiGraphics.nextStratum();
+             guiGraphics.setTooltipForNextFrame(this.font, tooltip, mouseX, mouseY);
         }
     }
 
@@ -1430,57 +1421,15 @@ public class VoxelMapScreen extends Screen {
     }
     
     private void renderCompass(GuiGraphics guiGraphics, int width, int height) {
-        // Compass configuration
         int cx = width - 40;
         int cy = 40;
-        float radius = 20.0f;
-        
-        float effectivePitch = ClientSettings.isTopDownView ? 90.0f : cameraPitch;
-        
-        PoseStack poseStack = guiGraphics.pose();
-        poseStack.pushPose();
-        poseStack.translate(cx, cy, 0);
-        
-        // Scale and Rotate (Flip Y for screen coords)
-        poseStack.scale(radius, -radius, radius); 
-        poseStack.mulPose(Axis.XP.rotationDegrees(effectivePitch));
-        poseStack.mulPose(Axis.YP.rotationDegrees(cameraYaw));
-        
-        // Draw Axis Lines
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        BufferBuilder buf;
-        RenderSystem.disableDepthTest(); // Draw on top
-        RenderSystem.lineWidth(4.0f); // Make lines thicker
-        
-        buf = Tesselator.getInstance().begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
-        Matrix4f pose = poseStack.last().pose();
-        
-        // Axis Lines (Length 1.5 for visibility)
-        float len = 1.5f;
-        // N (-Z) - Red
-        buf.addVertex(pose, 0, 0, 0).setColor(255, 100, 100, 255);
-        buf.addVertex(pose, 0, 0, -len).setColor(255, 0, 0, 255);
-        // S (+Z) - Dark Red
-        buf.addVertex(pose, 0, 0, 0).setColor(200, 200, 200, 255);
-        buf.addVertex(pose, 0, 0, len).setColor(150, 50, 50, 255);
-        // E (+X) - Blue
-        buf.addVertex(pose, 0, 0, 0).setColor(100, 100, 255, 255);
-        buf.addVertex(pose, len, 0, 0).setColor(0, 0, 255, 255);
-        // W (-X) - Dark Blue
-        buf.addVertex(pose, 0, 0, 0).setColor(200, 200, 200, 255);
-        buf.addVertex(pose, -len, 0, 0).setColor(50, 50, 150, 255);
-
-        RenderBufferUtil.drawIfNotEmpty(buf);
-        RenderSystem.lineWidth(1.0f); // Reset line width
-        
-        poseStack.popPose();
-        
-        // Draw labels N, S, E, W
-        // N (-Z), S (+Z), E (+X), W (-X)
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 0, 0, -1, "N", 0xFFFF0000, effectivePitch);
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 0, 0, 1, "S", 0xFFAAAAAA, effectivePitch);
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 1, 0, 0, "E", 0xFF0000FF, effectivePitch);
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, -1, 0, 0, "W", 0xFFAAAAAA, effectivePitch);
+        int radius = 20;
+        guiGraphics.fill(cx - radius, cy, cx + radius + 1, cy + 1, 0xAAFFFFFF);
+        guiGraphics.fill(cx, cy - radius, cx + 1, cy + radius + 1, 0xAAFFFFFF);
+        guiGraphics.drawCenteredString(this.font, "N", cx, cy - radius - 9, 0xFFFF5555);
+        guiGraphics.drawCenteredString(this.font, "S", cx, cy + radius + 2, 0xFFAAAAAA);
+        guiGraphics.drawString(this.font, "W", cx - radius - 9, cy - 4, 0xFFAAAAAA);
+        guiGraphics.drawString(this.font, "E", cx + radius + 3, cy - 4, 0xFF5555FF);
     }
 
     private void drawCompassLabel(GuiGraphics guiGraphics, int cx, int cy, float radius, float x, float y, float z, String text, int color, float pitch) {
@@ -1525,15 +1474,9 @@ public class VoxelMapScreen extends Screen {
             // Draw Icon
             ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + iconName + ".png");
             
-            float r = ((selectedColor >> 16) & 0xFF) / 255.0f;
-            float g = ((selectedColor >> 8) & 0xFF) / 255.0f;
-            float b = (selectedColor & 0xFF) / 255.0f;
-            
-            RenderSystem.enableBlend();
-            RenderSystem.setShaderColor(r, g, b, 1.0F);
-            guiGraphics.blit(iconLoc, btn.getX() + 2, btn.getY() + 2, 0, 0, 16, 16, 16, 16);
-            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-            RenderSystem.disableBlend();
+            int tint = 0xFF000000 | (selectedColor & 0xFFFFFF);
+            guiGraphics.blit(RenderPipelines.GUI_TEXTURED, iconLoc, btn.getX() + 2, btn.getY() + 2,
+                    0, 0, 16, 16, 16, 16, tint);
             
             if (selectedIcon.equals(iconName)) {
                 guiGraphics.renderOutline(btn.getX(), btn.getY(), btn.getWidth(), btn.getHeight(), 0xFFFFFFFF);
@@ -1643,15 +1586,9 @@ public class VoxelMapScreen extends Screen {
                  // Icon
                  ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
                  
-                 float r = ((wp.color >> 16) & 0xFF) / 255.0f;
-                 float g = ((wp.color >> 8) & 0xFF) / 255.0f;
-                 float b = (wp.color & 0xFF) / 255.0f;
-                 
-                 RenderSystem.enableBlend();
-                 RenderSystem.setShaderColor(r, g, b, 1.0F);
-                 guiGraphics.blit(iconLoc, listX + 5, rowY + 5, 0, 0, 20, 20, 20, 20);
-                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-                 RenderSystem.disableBlend();
+                 int iconTint = 0xFF000000 | (wp.color & 0xFFFFFF);
+                 guiGraphics.blit(RenderPipelines.GUI_TEXTURED, iconLoc, listX + 5, rowY + 5,
+                         0, 0, 20, 20, 20, 20, iconTint);
                  
                  // Name
                  guiGraphics.drawString(this.font, wp.name, listX + 35, rowY + 5, wp.color);
@@ -1675,28 +1612,22 @@ public class VoxelMapScreen extends Screen {
                  boolean shareHover = mouseX >= rightEdge - 150 && mouseX < rightEdge - 130 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 150, rowY + 5, rightEdge - 130, rowY + 25, shareHover ? 0xFF606060 : 0xFF404040);
                  ResourceLocation shareIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/share.png");
-                 RenderSystem.setShaderTexture(0, shareIcon);
-                 RenderSystem.enableBlend();
-                 guiGraphics.blit(shareIcon, rightEdge - 148, rowY + 7, 0, 0, 16, 16, 16, 16);
-                 RenderSystem.disableBlend();
+                 guiGraphics.blit(RenderPipelines.GUI_TEXTURED, shareIcon, rightEdge - 148, rowY + 7,
+                         0, 0, 16, 16, 16, 16);
                  
                  // Edit
                  boolean editHover = mouseX >= rightEdge - 120 && mouseX < rightEdge - 100 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 120, rowY + 5, rightEdge - 100, rowY + 25, editHover ? 0xFF606060 : 0xFF404040);
                  ResourceLocation editIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/edit.png");
-                 RenderSystem.setShaderTexture(0, editIcon);
-                 RenderSystem.enableBlend();
-                 guiGraphics.blit(editIcon, rightEdge - 118, rowY + 7, 0, 0, 16, 16, 16, 16);
-                 RenderSystem.disableBlend();
+                 guiGraphics.blit(RenderPipelines.GUI_TEXTURED, editIcon, rightEdge - 118, rowY + 7,
+                         0, 0, 16, 16, 16, 16);
                  
                  // Eye (Visibility)
                  boolean eyeHover = mouseX >= rightEdge - 90 && mouseX < rightEdge - 70 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 90, rowY + 5, rightEdge - 70, rowY + 25, eyeHover ? 0xFF606060 : 0xFF404040);
                  ResourceLocation eyeIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/" + (wp.visible ? "nothide.png" : "hide.png"));
-                 RenderSystem.setShaderTexture(0, eyeIcon);
-                 RenderSystem.enableBlend();
-                 guiGraphics.blit(eyeIcon, rightEdge - 88, rowY + 7, 0, 0, 16, 16, 16, 16);
-                 RenderSystem.disableBlend();
+                 guiGraphics.blit(RenderPipelines.GUI_TEXTURED, eyeIcon, rightEdge - 88, rowY + 7,
+                         0, 0, 16, 16, 16, 16);
                  
                  // TP
                  boolean canTeleport = canUseTeleportCommand();
@@ -1711,10 +1642,8 @@ public class VoxelMapScreen extends Screen {
                  boolean trashHover = mouseX >= rightEdge - 30 && mouseX < rightEdge - 10 && mouseY >= rowY && mouseY < rowY + itemHeight;
                  guiGraphics.fill(rightEdge - 30, rowY + 5, rightEdge - 10, rowY + 25, trashHover ? 0xFF606060 : 0xFF404040);
                  ResourceLocation deleteIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", trashHover ? "textures/deletehover.png" : "textures/delete.png");
-                 RenderSystem.setShaderTexture(0, deleteIcon);
-                 RenderSystem.enableBlend();
-                 guiGraphics.blit(deleteIcon, rightEdge - 28, rowY + 7, 0, 0, 16, 16, 16, 16);
-                 RenderSystem.disableBlend();
+                 guiGraphics.blit(RenderPipelines.GUI_TEXTURED, deleteIcon, rightEdge - 28, rowY + 7,
+                         0, 0, 16, 16, 16, 16);
             }
             
             guiGraphics.disableScissor();
@@ -1867,9 +1796,6 @@ public class VoxelMapScreen extends Screen {
             boolean isOn = stateSupplier.get();
             ResourceLocation texture = isOn ? textureOn : textureOff;
             
-            RenderSystem.setShaderTexture(0, texture);
-            RenderSystem.enableBlend();
-            
             // Draw background if hovered
             if (this.isHovered) {
                  guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x40FFFFFF);
@@ -1877,8 +1803,8 @@ public class VoxelMapScreen extends Screen {
             
             // Draw icon centered
             int iconSize = width - 4;
-            guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
-            RenderSystem.disableBlend();
+            guiGraphics.blit(RenderPipelines.GUI_TEXTURED, texture, getX() + 2, getY() + 2,
+                    0, 0, iconSize, iconSize, iconSize, iconSize);
         }
     }
 
@@ -1909,10 +1835,8 @@ public class VoxelMapScreen extends Screen {
             int textY = getY() + (height - 8) / 2;
             
             // Draw Icon
-            RenderSystem.setShaderTexture(0, icon);
-            RenderSystem.enableBlend();
-            guiGraphics.blit(icon, contentX, iconY, 0, 0, 16, 16, 16, 16);
-            RenderSystem.disableBlend();
+            guiGraphics.blit(RenderPipelines.GUI_TEXTURED, icon, contentX, iconY,
+                    0, 0, 16, 16, 16, 16);
             
             // Draw Text
             guiGraphics.drawString(font, getMessage(), contentX + iconWidth + gap, textY, color);
@@ -2083,7 +2007,7 @@ public class VoxelMapScreen extends Screen {
             if (isHovered) {
                 int currentY = min + (int)(value * (max - min));
                 Component tooltip = Component.literal("Y: " + currentY);
-                guiGraphics.renderTooltip(font, tooltip, mouseX, mouseY);
+                guiGraphics.setTooltipForNextFrame(font, tooltip, mouseX, mouseY);
             }
         }
 

@@ -1,11 +1,8 @@
 package com.agustinbenitez.voxelview3d.client;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.phys.Vec3;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import org.joml.Matrix4f;
@@ -28,13 +25,9 @@ public class WorldWaypointRenderer {
         // We render relative to camera, so we subtract cameraPos from waypoint pos
         BufferBuilder buf;
         
-        // Render System Setup
-        RenderSystem.enableDepthTest();
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        // Disable Depth Mask for see-through beams
-        RenderSystem.depthMask(false);
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        RenderBufferUtil.resetState();
+        RenderBufferUtil.setScreenSpace(false);
+        RenderBufferUtil.setDepthTest(true);
 
         // Group waypoints by Angle (Visual Cluster)
         // This groups waypoints that overlap on screen
@@ -135,7 +128,7 @@ public class WorldWaypointRenderer {
                     if (alpha < 0.05f) alpha = 0.05f; 
                 }
                 
-                RenderSystem.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE);
+                RenderBufferUtil.setAdditiveBlend(true);
                 buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
                 
                 int color = wp.color;
@@ -150,7 +143,7 @@ public class WorldWaypointRenderer {
                 float wInner = 0.2f;
                 VoxelMapRenderer.renderBox(buf, poseStack.last().pose(), rx, bottomY, rz, wInner, (float)beamHeight, wInner, r, g, b, alpha);
                 RenderBufferUtil.drawIfNotEmpty(buf);
-                RenderSystem.defaultBlendFunc();
+                RenderBufferUtil.setAdditiveBlend(false);
             }
 
             // 2. Render Name Tags (Stacked)
@@ -231,8 +224,7 @@ public class WorldWaypointRenderer {
 
         poseStack.popPose();
         
-        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
-        RenderSystem.depthMask(true); // Restore depth mask
+        RenderBufferUtil.setColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private static void renderNameTag(PoseStack poseStack, Font font, ClientSettings.Waypoint wp, double x, double y, double z) {
@@ -260,19 +252,16 @@ public class WorldWaypointRenderer {
         float hOffset = -font.width(text) / 2.0f;
         
         // Disable depth test to ensure text/icon is always visible
-        RenderSystem.disableDepthTest();
+        RenderBufferUtil.setDepthTest(false);
         // Disable culling to prevent backface culling when rotating
-        RenderSystem.disableCull();
-        // Disable depth mask to prevent writing to depth buffer (just in case)
-        RenderSystem.depthMask(false);
+        RenderBufferUtil.setCull(false);
         
         // 1. Draw Icon
         ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderTexture(0, iconLoc);
+        RenderBufferUtil.setTexture(iconLoc);
         
         // Use white color for icon in world view (no tint)
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderBufferUtil.setColor(1.0F, 1.0F, 1.0F, 1.0F);
         BufferBuilder buf;
         
         // Icon size in local units (after scaling)
@@ -287,7 +276,7 @@ public class WorldWaypointRenderer {
         buf.addVertex(matrix4f, iconSize/2, iconY - iconSize, 0).setUv(1, 0);
         RenderBufferUtil.drawIfNotEmpty(buf);
         
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderBufferUtil.setColor(1.0F, 1.0F, 1.0F, 1.0F);
         
         // 2. Draw Text
         // Use immediate buffer to ensure it draws with disabled depth test right now
@@ -303,9 +292,8 @@ public class WorldWaypointRenderer {
         
         bufferSource.endBatch();
         
-        RenderSystem.depthMask(true);
-        RenderSystem.enableDepthTest();
-        RenderSystem.enableCull();
+        RenderBufferUtil.setDepthTest(true);
+        RenderBufferUtil.setCull(true);
         
         poseStack.popPose();
     }

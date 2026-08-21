@@ -195,7 +195,7 @@ public class ChunkScanner {
         int maxVisibleY = Integer.MIN_VALUE;
         
         LevelChunkSection[] sections = chunk.getSections();
-        int minBuildHeight = chunk.getMinBuildHeight();
+        int minBuildHeight = chunk.getMinY();
         int[] surfaceHeights = new int[16 * 16];
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
@@ -207,7 +207,7 @@ public class ChunkScanner {
             LevelChunkSection section = sections[i];
             if (section == null || section.hasOnlyAir()) continue;
             
-            int sectionY = chunk.getMinBuildHeight() + i * 16;
+            int sectionY = chunk.getMinY() + i * 16;
             
             for (int y = 0; y < 16; y++) {
                 int worldY = sectionY + y;
@@ -901,7 +901,7 @@ public class ChunkScanner {
              } catch (Exception e) {
                  return true; 
              }
-        } else if (y < chunk.getMinBuildHeight() || y >= chunk.getMaxBuildHeight()) {
+        } else if (y < chunk.getMinY() || y >= chunk.getMaxY()) {
              return true; 
         } else {
              // Local Section Lookup

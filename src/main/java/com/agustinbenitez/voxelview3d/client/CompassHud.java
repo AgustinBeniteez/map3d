@@ -1,10 +1,10 @@
 package com.agustinbenitez.voxelview3d.client;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -50,24 +50,17 @@ public final class CompassHud {
             case LARGE -> hudScale = 1.0f;
         }
         
-        guiGraphics.pose().pushPose();
-        guiGraphics.pose().translate(centerX, topY, 0);
-        guiGraphics.pose().scale(hudScale, hudScale, 1.0f);
-        guiGraphics.pose().translate(-centerX, -topY, 0);
+        guiGraphics.pose().pushMatrix();
+        guiGraphics.pose().translate(centerX, topY);
+        guiGraphics.pose().scale(hudScale, hudScale);
+        guiGraphics.pose().translate(-centerX, -topY);
 
         // 1. Draw Background
         // Black bar with transparency
         guiGraphics.fill(centerX - COMPASS_WIDTH / 2, topY, centerX + COMPASS_WIDTH / 2, topY + COMPASS_HEIGHT, 0x80000000);
         
-        // Use Scissor to clip content to the bar
-        // Scissor coords are in window pixels, not GUI pixels. Need scale factor.
-        double scale = mc.getWindow().getGuiScale();
-        int scissorX = (int)((centerX - (COMPASS_WIDTH / 2.0 * hudScale)) * scale);
-        int scissorY = (int)((mc.getWindow().getHeight() - ((topY + (COMPASS_HEIGHT * hudScale))) * scale)); // Bottom-up
-        int scissorW = (int)((COMPASS_WIDTH * hudScale) * scale);
-        int scissorH = (int)((COMPASS_HEIGHT * hudScale) * scale);
-        
-        RenderSystem.enableScissor(scissorX, scissorY, scissorW, scissorH);
+        guiGraphics.enableScissor(centerX - COMPASS_WIDTH / 2, topY,
+                centerX + COMPASS_WIDTH / 2, topY + COMPASS_HEIGHT);
 
         // 2. Draw Entities (Now drawn FIRST so directions appear on top)
         for (Entity entity : mc.level.entitiesForRendering()) {
@@ -201,12 +194,12 @@ public final class CompassHud {
         drawDirection(guiGraphics, playerYaw, -90, "E", centerX, topY);
         drawDirection(guiGraphics, playerYaw, 270, "E", centerX, topY); // -90 is same as 270
 
-        RenderSystem.disableScissor();
+        guiGraphics.disableScissor();
         
         // Draw center indicator (optional triangle or line)
         guiGraphics.fill(centerX - 1, topY + COMPASS_HEIGHT, centerX + 1, topY + COMPASS_HEIGHT + 5, 0xFFFFFFFF);
         
-        guiGraphics.pose().popPose();
+        guiGraphics.pose().popMatrix();
     }
     
     private static void drawDirection(GuiGraphics guiGraphics, float playerYaw, float targetYaw, String text, int centerX, int topY) {
@@ -228,21 +221,15 @@ public final class CompassHud {
         
         // Draw Icon instead of colored rect
         ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
-        RenderSystem.setShaderTexture(0, iconLoc);
-        
         int iconSize = isStacked ? 7 : 10; // Smaller if stacked
         
         // Draw icon centered at x
         // If stacked, we might want to shift it visually or just use the y offset provided in the loop
         // The y passed here already includes the stack offset.
         
-        float r = ((wp.color >> 16) & 0xFF) / 255.0f;
-        float g = ((wp.color >> 8) & 0xFF) / 255.0f;
-        float b = (wp.color & 0xFF) / 255.0f;
-        
-        RenderSystem.setShaderColor(r, g, b, 1.0F);
-        guiGraphics.blit(iconLoc, x - iconSize/2, y, iconSize, iconSize, 0, 0, 16, 16, 16, 16);
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        int tint = 0xFF000000 | (wp.color & 0xFFFFFF);
+        guiGraphics.blit(RenderPipelines.GUI_TEXTURED, iconLoc, x - iconSize/2, y,
+                0, 0, iconSize, iconSize, 16, 16, 16, 16, tint);
     }
     
     private static class VisibleWaypoint {
@@ -268,19 +255,17 @@ public final class CompassHud {
                 AbstractClientPlayer p = (AbstractClientPlayer) entity;
                 ResourceLocation skin = p.getSkin().texture();
                 
-                RenderSystem.setShaderTexture(0, skin);
-                
                 // Draw 8x8 face scaled to 8x8 on screen (smaller, aligned with other markers)
                 int headSize = 8;
                 int drawY = y + 4; // Align with generic markers
                 
                 // Center the head on x
                 // Draw face
-                guiGraphics.blit(skin, x - headSize/2, drawY, headSize, headSize, 8, 8, 8, 8, 64, 64);
+                guiGraphics.blit(RenderPipelines.GUI_TEXTURED, skin, x - headSize/2, drawY,
+                        8, 8, headSize, headSize, 8, 8, 64, 64);
                 // Draw hat/outer layer
-                RenderSystem.enableBlend();
-                guiGraphics.blit(skin, x - headSize/2, drawY, headSize, headSize, 40, 8, 8, 8, 64, 64);
-                RenderSystem.disableBlend();
+                guiGraphics.blit(RenderPipelines.GUI_TEXTURED, skin, x - headSize/2, drawY,
+                        40, 8, headSize, headSize, 8, 8, 64, 64);
                 
             } else {
                 // Render generic dot/icon

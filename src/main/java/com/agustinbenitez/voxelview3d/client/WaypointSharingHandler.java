@@ -67,8 +67,8 @@ public class WaypointSharingHandler {
                     .setStyle(Style.EMPTY
                         .withColor(wp.color)
                         .withUnderlined(true)
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/vv3d_add_wp " + encoded))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.translatable("voxelview3d.chat.share_hover")))
+                        .withClickEvent(new ClickEvent.SuggestCommand("/vv3d_add_wp " + encoded))
+                        .withHoverEvent(new HoverEvent.ShowText(Component.translatable("voxelview3d.chat.share_hover")))
                     );
                 
                 // Replace the tag in the message with the clickable component
