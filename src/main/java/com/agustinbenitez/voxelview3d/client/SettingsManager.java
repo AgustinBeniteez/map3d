@@ -67,7 +67,7 @@ public class SettingsManager {
     }
 
     private static class SettingsData {
-        public int renderDistance = 5;
+        public int renderDistance = 7;
         public boolean showCoords = true;
         public boolean autoDeathPoints = true;
         public boolean showChunkGrid = false;

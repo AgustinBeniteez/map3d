@@ -11,6 +11,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
@@ -43,7 +44,13 @@ public class VoxelMapScreen extends Screen {
     private boolean isCreatingMode = false; // Toggle between List and Create mode
     private float scrollOffset = 0; // Scroll offset for waypoint list
     private boolean isDraggingMap = false;
+    private boolean mapDragMoved = false;
+    private double mapPressX;
+    private double mapPressY;
     private ClientSettings.Waypoint editingWaypoint = null;
+    private BlockPos selectedMapBlock;
+    private int blockMenuX;
+    private int blockMenuY;
     
     private EditBox waypointNameField;
     private EditBox wpX, wpY, wpZ;
@@ -75,6 +82,8 @@ public class VoxelMapScreen extends Screen {
     private Button closeModalBtn;
     private Button closeMapBtn;
     private Button goBtn;
+    private Button selectedWaypointBtn;
+    private Button selectedTeleportBtn;
     
     // Settings Widgets
     private Button toggleCompassBtn;
@@ -215,7 +224,11 @@ public class VoxelMapScreen extends Screen {
             new ResourceLocation("voxelview3d", "textures/side.png"),
             new ResourceLocation("voxelview3d", "textures/up.png"),
             () -> !ClientSettings.isTopDownView,
-            b -> { ClientSettings.isTopDownView = !ClientSettings.isTopDownView; SettingsManager.saveSettings(); }));
+            b -> {
+                ClientSettings.isTopDownView = !ClientSettings.isTopDownView;
+                clearBlockSelection();
+                SettingsManager.saveSettings();
+            }));
         x += btnWidth + 5;
         
         // Waypoints Button
@@ -250,6 +263,7 @@ public class VoxelMapScreen extends Screen {
             // Reset Pan to center on player
             this.panX = 0;
             this.panY = 0;
+            clearBlockSelection();
         }, Supplier::get) {
              @Override
              public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
@@ -292,11 +306,28 @@ public class VoxelMapScreen extends Screen {
                  guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
              }
         });
+
+        initBlockSelectionWidgets();
         
         // Modal Widgets (hidden by default)
         initModalWidgets();
         
         updateModalVisibility();
+    }
+
+    private void initBlockSelectionWidgets() {
+        selectedWaypointBtn = addRenderableWidget(Button.builder(
+                Component.translatable("voxelview3d.selection.create_waypoint"),
+                b -> createWaypointAtSelectedBlock())
+                .bounds(blockMenuX + 5, blockMenuY + 23, 125, 20)
+                .build());
+        selectedTeleportBtn = addRenderableWidget(Button.builder(
+                Component.translatable("voxelview3d.selection.teleport"),
+                b -> teleportToSelectedBlock())
+                .bounds(blockMenuX + 135, blockMenuY + 23, 50, 20)
+                .build());
+        selectedWaypointBtn.visible = false;
+        selectedTeleportBtn.visible = false;
     }
     
     private void initModalWidgets() {
@@ -734,6 +765,85 @@ public class VoxelMapScreen extends Screen {
         if (hudSizeBtn != null) {
             hudSizeBtn.visible = showSettingsModal && !showWaypointModal;
         }
+
+        updateBlockSelectionVisibility();
+    }
+
+    private void selectMapBlock(double screenX, double screenY, double menuMouseX,
+                                double menuMouseY, int effectiveWidth, int effectiveHeight) {
+        selectedMapBlock = VoxelMapRenderer.pickBlock(screenX, screenY);
+        if (selectedMapBlock != null) {
+            int menuWidth = 190;
+            int menuHeight = 48;
+            int desiredX = (int)menuMouseX + 8;
+            int desiredY = (int)menuMouseY + 8;
+            if (desiredY + menuHeight > effectiveHeight - 35) {
+                desiredY = (int)menuMouseY - menuHeight - 8;
+            }
+            blockMenuX = Mth.clamp(desiredX, 4, Math.max(4, effectiveWidth - menuWidth - 4));
+            blockMenuY = Mth.clamp(desiredY, 4, Math.max(4, effectiveHeight - menuHeight - 39));
+        }
+        updateBlockSelectionVisibility();
+    }
+
+    private void clearBlockSelection() {
+        selectedMapBlock = null;
+        updateBlockSelectionVisibility();
+    }
+
+    private void updateBlockSelectionVisibility() {
+        if (selectedWaypointBtn == null || selectedTeleportBtn == null) return;
+
+        boolean visible = selectedMapBlock != null && !showWaypointModal && !showSettingsModal;
+        selectedWaypointBtn.visible = visible;
+        selectedTeleportBtn.visible = visible;
+        if (visible) {
+            selectedWaypointBtn.setX(blockMenuX + 5);
+            selectedWaypointBtn.setY(blockMenuY + 23);
+            selectedTeleportBtn.setX(blockMenuX + 135);
+            selectedTeleportBtn.setY(blockMenuY + 23);
+            selectedTeleportBtn.active = canUseTeleportCommand();
+        }
+    }
+
+    private boolean canUseTeleportCommand() {
+        if (minecraft == null || minecraft.player == null || minecraft.getConnection() == null) return false;
+        var root = minecraft.getConnection().getCommands().getRoot();
+        return root.getChild("tp") != null || root.getChild("teleport") != null;
+    }
+
+    private boolean teleportToCoordinates(double x, double y, double z) {
+        if (!canUseTeleportCommand() || minecraft.player == null) return false;
+
+        minecraft.player.connection.sendCommand("tp " + x + " " + y + " " + z);
+        this.onClose();
+        return true;
+    }
+
+    private void teleportToSelectedBlock() {
+        if (selectedMapBlock == null) return;
+        teleportToCoordinates(selectedMapBlock.getX() + 0.5,
+                selectedMapBlock.getY() + 1.0,
+                selectedMapBlock.getZ() + 0.5);
+    }
+
+    private void createWaypointAtSelectedBlock() {
+        if (selectedMapBlock == null) return;
+
+        showWaypointModal = true;
+        showSettingsModal = false;
+        isCreatingMode = true;
+        editingWaypoint = null;
+        if (minecraft.level != null) {
+            currentDimensionFilter = minecraft.level.dimension().location().toString();
+        }
+
+        wpX.setValue(String.valueOf(selectedMapBlock.getX()));
+        wpY.setValue(String.valueOf(selectedMapBlock.getY() + 1));
+        wpZ.setValue(String.valueOf(selectedMapBlock.getZ()));
+        waypointNameField.setValue("");
+        selectedIcon = "icon1";
+        updateModalVisibility();
     }
     
     private void createWaypoint() {
@@ -967,10 +1077,7 @@ public class VoxelMapScreen extends Screen {
                  
                  if (scaledX >= rightEdge - 60 && scaledX < rightEdge - 40) {
                      // TP
-                     if (minecraft.player != null) {
-                         minecraft.player.connection.sendCommand("tp " + wp.x + " " + wp.y + " " + wp.z);
-                         this.onClose(); // Close the map after TP
-                     }
+                     teleportToCoordinates(wp.x, wp.y, wp.z);
                      return true;
                  }
                  
@@ -984,8 +1091,11 @@ public class VoxelMapScreen extends Screen {
         }
         
         // If not hovering any UI element, start dragging map
-        if (!isHoveringUI(scaledX, scaledY)) {
+        if (!isHoveringUI(scaledX, scaledY) && (button == 0 || button == 1)) {
             isDraggingMap = true;
+            mapDragMoved = false;
+            mapPressX = mouseX;
+            mapPressY = mouseY;
             return true;
         }
         
@@ -994,8 +1104,18 @@ public class VoxelMapScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        boolean handledByMap = isDraggingMap;
         isDraggingMap = false;
         float scale = getHudScale();
+        if (handledByMap) {
+            if (button == 1 && !mapDragMoved && !showWaypointModal && !showSettingsModal) {
+                int effectiveWidth = (int)(this.width / scale);
+                int effectiveHeight = (int)(this.height / scale);
+                selectMapBlock(mouseX, mouseY, mouseX / scale, mouseY / scale,
+                        effectiveWidth, effectiveHeight);
+            }
+            return true;
+        }
         return super.mouseReleased(mouseX / scale, mouseY / scale, button);
     }
 
@@ -1148,7 +1268,8 @@ public class VoxelMapScreen extends Screen {
         // Use shared renderer
         if (!showWaypointModal && !showSettingsModal) {
             float pitch = ClientSettings.isTopDownView ? 90.0f : cameraPitch;
-            VoxelMapRenderer.renderMap(poseStack, zoom, pitch, cameraYaw, false, ClientSettings.renderDistance);
+            VoxelMapRenderer.renderMap(poseStack, zoom, pitch, cameraYaw, false,
+                    ClientSettings.renderDistance, selectedMapBlock);
         }
         
         // Clear depth buffer to ensure UI draws cleanly on top of the 3D map
@@ -1262,6 +1383,11 @@ public class VoxelMapScreen extends Screen {
             
             guiGraphics.drawCenteredString(this.font, coords, centerX, topMargin, 0xFFFFFF);
             guiGraphics.drawCenteredString(this.font, biomeName, centerX, topMargin + 12, 0xFFFFFF);
+        }
+
+        if (selectedMapBlock != null && !showWaypointModal && !showSettingsModal) {
+            selectedTeleportBtn.active = canUseTeleportCommand();
+            renderBlockSelectionMenu(guiGraphics);
         }
         
         // Render Modal if open
@@ -1433,6 +1559,19 @@ public class VoxelMapScreen extends Screen {
         guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.settings.title"), settingsX + settingsW / 2, settingsY + 15, 0xFFFFFFFF);
     }
 
+    private void renderBlockSelectionMenu(GuiGraphics guiGraphics) {
+        int menuWidth = 190;
+        int menuHeight = 48;
+        guiGraphics.fill(blockMenuX, blockMenuY, blockMenuX + menuWidth,
+                blockMenuY + menuHeight, 0xE0101010);
+        guiGraphics.renderOutline(blockMenuX, blockMenuY, menuWidth, menuHeight, 0xFF00FFFF);
+
+        Component coordinates = Component.translatable("voxelview3d.selection.block",
+                selectedMapBlock.getX(), selectedMapBlock.getY(), selectedMapBlock.getZ());
+        guiGraphics.drawCenteredString(font, coordinates, blockMenuX + menuWidth / 2,
+                blockMenuY + 7, 0xFFFFFFFF);
+    }
+
     private void renderWaypointModal(GuiGraphics guiGraphics, int mouseX, int mouseY, int width, int height) {
         // Dynamic Full Screen Modal
         int margin = 10;
@@ -1559,9 +1698,13 @@ public class VoxelMapScreen extends Screen {
                  RenderSystem.disableBlend();
                  
                  // TP
-                 boolean tpHover = mouseX >= rightEdge - 60 && mouseX < rightEdge - 40 && mouseY >= rowY && mouseY < rowY + itemHeight;
-                 guiGraphics.fill(rightEdge - 60, rowY + 5, rightEdge - 40, rowY + 25, tpHover ? 0xFF606060 : 0xFF404040);
-                 guiGraphics.drawCenteredString(this.font, "/TP", rightEdge - 50, rowY + 11, 0xFFFFFFFF);
+                 boolean canTeleport = canUseTeleportCommand();
+                 boolean tpHover = canTeleport && mouseX >= rightEdge - 60 && mouseX < rightEdge - 40
+                         && mouseY >= rowY && mouseY < rowY + itemHeight;
+                 int tpBackground = canTeleport ? (tpHover ? 0xFF606060 : 0xFF404040) : 0xFF202020;
+                 guiGraphics.fill(rightEdge - 60, rowY + 5, rightEdge - 40, rowY + 25, tpBackground);
+                 guiGraphics.drawCenteredString(this.font, "/TP", rightEdge - 50, rowY + 11,
+                         canTeleport ? 0xFFFFFFFF : 0xFF777777);
                  
                  // Trash
                  boolean trashHover = mouseX >= rightEdge - 30 && mouseX < rightEdge - 10 && mouseY >= rowY && mouseY < rowY + itemHeight;
@@ -1603,6 +1746,12 @@ public class VoxelMapScreen extends Screen {
         if (super.mouseDragged(mouseX / scale, mouseY / scale, button, dragX / scale, dragY / scale)) return true;
         
         if (isDraggingMap) {
+            if (!mapDragMoved
+                    && Math.hypot(mouseX - mapPressX, mouseY - mapPressY) > 3.0) {
+                mapDragMoved = true;
+                clearBlockSelection();
+            }
+
             // Map interaction
             if (button == 0) { // Left Click: Pan
                 this.panX += dragX;
@@ -1658,6 +1807,7 @@ public class VoxelMapScreen extends Screen {
         if (isHoveringUI(scaledX, scaledY)) return false;
 
         // Map interaction: Zoom
+        clearBlockSelection();
         this.zoom += (float)delta * 0.5f;
         if (this.zoom < 0.5f) this.zoom = 0.5f;
         if (this.zoom > 15.0f) this.zoom = 15.0f;
@@ -1671,6 +1821,12 @@ public class VoxelMapScreen extends Screen {
         
         // Bottom Menu
         if (mouseY >= effectiveHeight - 35) return true;
+
+        if (selectedMapBlock != null && !showWaypointModal && !showSettingsModal
+                && mouseX >= blockMenuX && mouseX <= blockMenuX + 190
+                && mouseY >= blockMenuY && mouseY <= blockMenuY + 48) {
+            return true;
+        }
         
         // Modal
         if (showWaypointModal) {

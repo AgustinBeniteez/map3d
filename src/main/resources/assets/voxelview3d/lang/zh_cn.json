@@ -1,5 +1,5 @@
 {
-  "voxelview3d.title": "体素地图",
+  "voxelview3d.title": "Map 3d usseewa",
   "voxelview3d.toggle.villagers": "村民: ",
   "voxelview3d.toggle.animals": "动物: ",
   "voxelview3d.toggle.enemies": "敌人: ",
@@ -37,7 +37,7 @@
   "voxelview3d.coords": "X: %d Y: %d Z: %d",
   "voxelview3d.biome.unknown": "未知生物群系",
   "voxelview3d.unknown": "未知",
-  "key.categories.voxelview3d": "VoxelView 3D",
+  "key.categories.voxelview3d": "Map 3d usseewa",
   "key.voxelview3d.open_map": "打开地图",
   "key.voxelview3d.open_waypoints_list": "打开坐标点列表",
   "key.voxelview3d.create_waypoint": "快速创建坐标点",

@@ -1,5 +1,5 @@
 {
-  "voxelview3d.title": "Mapa Voxel",
+  "voxelview3d.title": "Map 3d usseewa",
   "voxelview3d.toggle.villagers": "Vil: ",
   "voxelview3d.toggle.animals": "Ani: ",
   "voxelview3d.toggle.enemies": "Ene: ",
@@ -37,7 +37,7 @@
   "voxelview3d.coords": "X: %d Y: %d Z: %d",
   "voxelview3d.biome.unknown": "Bioma Desconegut",
   "voxelview3d.unknown": "Desconegut",
-  "key.categories.voxelview3d": "VoxelView 3D",
+  "key.categories.voxelview3d": "Map 3d usseewa",
   "key.voxelview3d.open_map": "Obrir Mapa",
   "key.voxelview3d.open_waypoints_list": "Obrir Llista Punts",
   "key.voxelview3d.create_waypoint": "Crear Punt Ràpid",

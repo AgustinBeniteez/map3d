@@ -20,6 +20,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Heightmap;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import java.util.HashMap;
@@ -57,8 +58,21 @@ public class VoxelMapRenderer {
     private static final long REDUCED_DETAIL_BLOCK_THRESHOLD = 70_000L;
     private static final float VIEWPORT_CULL_MARGIN = 64.0f;
     private static final RandomSource MODEL_RANDOM = RandomSource.create(0L);
+    private static final Matrix4f LAST_PICK_POSE = new Matrix4f();
+    private static boolean hasPickState;
+    private static double lastPickCenterX;
+    private static double lastPickCenterY;
+    private static double lastPickCenterZ;
+    private static int lastPickMinBuildHeight;
+    private static int lastPickMinY;
+    private static int lastPickMaxY;
+    private static int lastPickRadius;
+    private static ChunkPos lastPickCenterChunk;
+    private static boolean lastPickReducedDetail;
+    private static double lastPickDetailRadiusSq;
 
-    public static void renderMap(PoseStack poseStack, float zoom, float cameraPitch, float cameraYaw, boolean isHud, int renderRadius) {
+    public static void renderMap(PoseStack poseStack, float zoom, float cameraPitch, float cameraYaw,
+                                 boolean isHud, int renderRadius, BlockPos selectedBlock) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
         
@@ -224,6 +238,8 @@ public class VoxelMapRenderer {
         
         // Update Global State for UI
         isUndergroundState = isUnderground;
+        cachePickState(poseStack.last().pose(), player, cameraY, minBuildHeight,
+                renderMinY, renderMaxY, renderRadius);
 
         // Render Chunks
         renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY,
@@ -248,6 +264,10 @@ public class VoxelMapRenderer {
         
         // Render Player Marker (Spectral Effect - Always Visible)
         renderPlayerMarker(poseStack, player, isTopDown, inspectingLayers);
+
+        // Keep the selected block readable over dense terrain.
+        renderSelectedBlockOutline(poseStack, player, cameraY, selectedBlock,
+                renderMinY, renderMaxY);
         
         poseStack.popPose();
         
@@ -1030,6 +1050,157 @@ public class VoxelMapRenderer {
         // Restore Depth Test
         RenderSystem.enableDepthTest();
     }
+
+    private static void cachePickState(Matrix4f pose, Player player, double cameraY,
+                                       int minBuildHeight, int minY, int maxY, int radius) {
+        LAST_PICK_POSE.set(pose);
+        lastPickCenterX = player.getX();
+        lastPickCenterY = cameraY;
+        lastPickCenterZ = player.getZ();
+        lastPickMinBuildHeight = minBuildHeight;
+        lastPickMinY = minY;
+        lastPickMaxY = maxY;
+        lastPickRadius = radius;
+        lastPickCenterChunk = player.chunkPosition();
+        lastPickReducedDetail = false;
+        lastPickDetailRadiusSq = 0.0;
+        hasPickState = true;
+    }
+
+    public static BlockPos pickBlock(double screenX, double screenY) {
+        if (!hasPickState || lastPickCenterChunk == null) return null;
+
+        Matrix4f inverse = new Matrix4f(LAST_PICK_POSE).invert();
+        Vector3f rayOrigin = inverse.transformPosition(
+                new Vector3f((float)screenX, (float)screenY, 0.0f));
+        Vector3f rayDirection = inverse.transformDirection(new Vector3f(0.0f, 0.0f, 1.0f));
+        if (!rayOrigin.isFinite() || !rayDirection.isFinite()
+                || rayDirection.lengthSquared() < 1.0e-10f) return null;
+
+        double bestDepth = Double.NEGATIVE_INFINITY;
+        BlockPos bestBlock = null;
+        Minecraft mc = Minecraft.getInstance();
+        int viewportWidth = mc.getWindow().getGuiScaledWidth();
+        int viewportHeight = mc.getWindow().getGuiScaledHeight();
+
+        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : ChunkScanner.getData().entrySet()) {
+            ChunkPos cp = entry.getKey();
+            if (!isChunkWithinRadius(cp, lastPickCenterChunk, lastPickRadius)) continue;
+
+            ChunkScanner.ScannedChunk chunkData = entry.getValue();
+            if (!isChunkOnScreen(LAST_PICK_POSE, cp, chunkData,
+                    lastPickCenterX, lastPickCenterZ, lastPickCenterY,
+                    lastPickMinY, lastPickMaxY,
+                    viewportWidth, viewportHeight)) continue;
+
+            int[] positions = chunkData.positions;
+            byte[] geometryFaces = chunkData.geometryFaces;
+            for (int i = 0; i < positions.length; i++) {
+                int packed = positions[i];
+                int x = packed & 0xF;
+                int z = (packed >> 4) & 0xF;
+                int h = ((packed >> 8) & 0x1FF) + lastPickMinBuildHeight;
+                if (h < lastPickMinY || h > lastPickMaxY) continue;
+
+                int renderType = (packed >> 17) & 0x7F;
+                double boxX = cp.getMinBlockX() + x - lastPickCenterX;
+                double boxY = h - lastPickCenterY;
+                double boxZ = cp.getMinBlockZ() + z - lastPickCenterZ;
+                double horizontalX = boxX + 0.5;
+                double horizontalZ = boxZ + 0.5;
+                if (lastPickReducedDetail
+                        && horizontalX * horizontalX + horizontalZ * horizontalZ > lastPickDetailRadiusSq
+                        && shouldHideInDistantLod(renderType)) continue;
+
+                int exposedFaces = geometryFaces != null && i < geometryFaces.length
+                        ? geometryFaces[i] & 0x3F
+                        : (packed >> 24) & 0x3F;
+                if (exposedFaces == 0) continue;
+
+                double depth = intersectExposedBlock(rayOrigin, rayDirection,
+                        boxX, boxY, boxZ, exposedFaces);
+                if (depth > bestDepth) {
+                    bestDepth = depth;
+                    bestBlock = new BlockPos(cp.getMinBlockX() + x, h, cp.getMinBlockZ() + z);
+                }
+            }
+        }
+
+        return bestBlock;
+    }
+
+    private static double intersectExposedBlock(Vector3f origin, Vector3f direction,
+                                                double minX, double minY, double minZ,
+                                                int exposedFaces) {
+        double tNear = Double.NEGATIVE_INFINITY;
+        double tFar = Double.POSITIVE_INFINITY;
+        int exitFace = 0;
+
+        double dx = direction.x();
+        if (Math.abs(dx) < 1.0e-9) {
+            if (origin.x() < minX || origin.x() > minX + 1.0) return Double.NEGATIVE_INFINITY;
+        } else {
+            double t0 = (minX - origin.x()) / dx;
+            double t1 = (minX + 1.0 - origin.x()) / dx;
+            int farFace = 2;
+            if (t0 > t1) {
+                double swap = t0;
+                t0 = t1;
+                t1 = swap;
+                farFace = 1;
+            }
+            tNear = Math.max(tNear, t0);
+            if (t1 < tFar) {
+                tFar = t1;
+                exitFace = farFace;
+            }
+            if (tNear > tFar) return Double.NEGATIVE_INFINITY;
+        }
+
+        double dy = direction.y();
+        if (Math.abs(dy) < 1.0e-9) {
+            if (origin.y() < minY || origin.y() > minY + 1.0) return Double.NEGATIVE_INFINITY;
+        } else {
+            double t0 = (minY - origin.y()) / dy;
+            double t1 = (minY + 1.0 - origin.y()) / dy;
+            int farFace = 8;
+            if (t0 > t1) {
+                double swap = t0;
+                t0 = t1;
+                t1 = swap;
+                farFace = 4;
+            }
+            tNear = Math.max(tNear, t0);
+            if (t1 < tFar) {
+                tFar = t1;
+                exitFace = farFace;
+            }
+            if (tNear > tFar) return Double.NEGATIVE_INFINITY;
+        }
+
+        double dz = direction.z();
+        if (Math.abs(dz) < 1.0e-9) {
+            if (origin.z() < minZ || origin.z() > minZ + 1.0) return Double.NEGATIVE_INFINITY;
+        } else {
+            double t0 = (minZ - origin.z()) / dz;
+            double t1 = (minZ + 1.0 - origin.z()) / dz;
+            int farFace = 32;
+            if (t0 > t1) {
+                double swap = t0;
+                t0 = t1;
+                t1 = swap;
+                farFace = 16;
+            }
+            tNear = Math.max(tNear, t0);
+            if (t1 < tFar) {
+                tFar = t1;
+                exitFace = farFace;
+            }
+            if (tNear > tFar) return Double.NEGATIVE_INFINITY;
+        }
+
+        return (exposedFaces & exitFace) != 0 ? tFar : Double.NEGATIVE_INFINITY;
+    }
     
     private static void renderChunks(PoseStack poseStack, Player player, int radius, int minBuildHeight,
                                      int renderMinY, int renderMaxY, boolean isUnderground,
@@ -1064,6 +1235,8 @@ public class VoxelMapRenderer {
         // grows with zoom so nearby screen detail does not suddenly downgrade.
         double detailRadius = Math.min(96.0, Math.max(36.0, 24.0 + zoom * 12.0));
         double detailRadiusSq = detailRadius * detailRadius;
+        lastPickReducedDetail = reducedDetail;
+        lastPickDetailRadiusSq = detailRadiusSq;
 
         BufferBuilder buf = Tesselator.getInstance().getBuilder();
 
@@ -3352,6 +3525,58 @@ public class VoxelMapRenderer {
 
     private static void renderInvertedColorBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float size, float red, float green, float blue, float alpha) {
         renderInvertedColorBox(buf, pose, x, y, z, size, size, size, red, green, blue, alpha);
+    }
+
+    private static void renderSelectedBlockOutline(PoseStack poseStack, Player player,
+                                                   double cameraY, BlockPos selectedBlock,
+                                                   int minY, int maxY) {
+        if (selectedBlock == null || selectedBlock.getY() < minY || selectedBlock.getY() > maxY) return;
+
+        float padding = 0.025f;
+        float x0 = (float)(selectedBlock.getX() - player.getX()) - padding;
+        float x1 = x0 + 1.0f + padding * 2.0f;
+        float y0 = (float)(selectedBlock.getY() - cameraY) - padding;
+        float y1 = y0 + 1.0f + padding * 2.0f;
+        float z0 = (float)(selectedBlock.getZ() - player.getZ()) - padding;
+        float z1 = z0 + 1.0f + padding * 2.0f;
+
+        RenderSystem.disableDepthTest();
+        RenderSystem.depthMask(false);
+        RenderSystem.disableCull();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        RenderSystem.lineWidth(3.0f);
+
+        BufferBuilder buf = Tesselator.getInstance().getBuilder();
+        Matrix4f pose = poseStack.last().pose();
+        buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+
+        appendOutlineLine(buf, pose, x0, y0, z0, x1, y0, z0);
+        appendOutlineLine(buf, pose, x1, y0, z0, x1, y0, z1);
+        appendOutlineLine(buf, pose, x1, y0, z1, x0, y0, z1);
+        appendOutlineLine(buf, pose, x0, y0, z1, x0, y0, z0);
+        appendOutlineLine(buf, pose, x0, y1, z0, x1, y1, z0);
+        appendOutlineLine(buf, pose, x1, y1, z0, x1, y1, z1);
+        appendOutlineLine(buf, pose, x1, y1, z1, x0, y1, z1);
+        appendOutlineLine(buf, pose, x0, y1, z1, x0, y1, z0);
+        appendOutlineLine(buf, pose, x0, y0, z0, x0, y1, z0);
+        appendOutlineLine(buf, pose, x1, y0, z0, x1, y1, z0);
+        appendOutlineLine(buf, pose, x1, y0, z1, x1, y1, z1);
+        appendOutlineLine(buf, pose, x0, y0, z1, x0, y1, z1);
+
+        BufferUploader.drawWithShader(buf.end());
+        RenderSystem.lineWidth(1.0f);
+        RenderSystem.depthMask(true);
+        RenderSystem.enableDepthTest();
+        RenderSystem.enableCull();
+    }
+
+    private static void appendOutlineLine(BufferBuilder buf, Matrix4f pose,
+                                          float x0, float y0, float z0,
+                                          float x1, float y1, float z1) {
+        buf.vertex(pose, x0, y0, z0).color(0, 255, 255, 255).endVertex();
+        buf.vertex(pose, x1, y1, z1).color(0, 255, 255, 255).endVertex();
     }
 
     private static void renderChunkGrid(PoseStack poseStack, Player player, int radius) {
