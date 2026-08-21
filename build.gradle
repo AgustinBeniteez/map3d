@@ -8,7 +8,7 @@ group = 'com.example.voxelview3d'
 version = '1.0.0'
 
 base {
-    archivesName = 'voxelview3d'
+    archivesName = 'map-3d-usseewa'
 }
 
 java {
