@@ -80,16 +80,21 @@ public class ChunkScanner {
         public final int[] colors;
         public final byte[] lights;
         public final byte[] geometryFaces;
+        public final int minBlockY;
+        public final int maxBlockY;
         public final boolean hasColorBlocks;
         public final boolean hasTexturedBlocks;
         public final boolean hasChests;
         
         public ScannedChunk(int[] positions, int[] colors, byte[] lights, byte[] geometryFaces,
-                            boolean hasColorBlocks, boolean hasTexturedBlocks, boolean hasChests) {
+                            int minBlockY, int maxBlockY, boolean hasColorBlocks,
+                            boolean hasTexturedBlocks, boolean hasChests) {
             this.positions = positions;
             this.colors = colors;
             this.lights = lights;
             this.geometryFaces = geometryFaces;
+            this.minBlockY = minBlockY;
+            this.maxBlockY = maxBlockY;
             this.hasColorBlocks = hasColorBlocks;
             this.hasTexturedBlocks = hasTexturedBlocks;
             this.hasChests = hasChests;
@@ -192,6 +197,8 @@ public class ChunkScanner {
         boolean hasColorBlocks = false;
         boolean hasTexturedBlocks = false;
         boolean hasChests = false;
+        int minVisibleY = Integer.MAX_VALUE;
+        int maxVisibleY = Integer.MIN_VALUE;
         
         LevelChunkSection[] sections = chunk.getSections();
         int minBuildHeight = chunk.getMinBuildHeight();
@@ -685,6 +692,8 @@ public class ChunkScanner {
                                 int packed = (x & 0xF) | ((z & 0xF) << 4) | ((relY & 0x1FF) << 8) | ((renderType & 0x7F) << 17) | ((exposedFaces & 0x3F) << 24);
                                 
                                 positions.add(packed);
+                                minVisibleY = Math.min(minVisibleY, worldY);
+                                maxVisibleY = Math.max(maxVisibleY, worldY);
 
                                 if (renderType == RENDER_CHEST) {
                                     hasChests = true;
@@ -875,9 +884,13 @@ public class ChunkScanner {
             }
         }
         
+        if (minVisibleY == Integer.MAX_VALUE) {
+            minVisibleY = minBuildHeight;
+            maxVisibleY = minBuildHeight;
+        }
         CHUNK_DATA.put(pos, new ScannedChunk(
                 positions.toArray(), colors.toArray(), lights.toArray(), geometryFaces.toArray(),
-                hasColorBlocks, hasTexturedBlocks, hasChests));
+                minVisibleY, maxVisibleY, hasColorBlocks, hasTexturedBlocks, hasChests));
     }
     
     private static boolean isTransparent(LevelChunk chunk, int x, int y, int z, BlockState selfState) {

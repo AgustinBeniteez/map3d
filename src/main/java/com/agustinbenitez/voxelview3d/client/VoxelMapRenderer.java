@@ -55,6 +55,7 @@ public class VoxelMapRenderer {
     public static boolean isUndergroundState = false;
     private static final int MAX_BLOCKS_PER_BATCH = 12_000;
     private static final long REDUCED_DETAIL_BLOCK_THRESHOLD = 70_000L;
+    private static final float VIEWPORT_CULL_MARGIN = 64.0f;
     private static final RandomSource MODEL_RANDOM = RandomSource.create(0L);
 
     public static void renderMap(PoseStack poseStack, float zoom, float cameraPitch, float cameraYaw, boolean isHud, int renderRadius) {
@@ -1042,35 +1043,43 @@ public class VoxelMapRenderer {
         
         if (data.isEmpty()) return;
 
+        Minecraft mc = Minecraft.getInstance();
+        int viewportWidth = mc.getWindow().getGuiScaledWidth();
+        int viewportHeight = mc.getWindow().getGuiScaledHeight();
+        Matrix4f pose = poseStack.last().pose();
+        List<Map.Entry<ChunkPos, ChunkScanner.ScannedChunk>> visibleChunks = new ArrayList<>();
         long visibleBlockCount = 0L;
         for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
-            if (isChunkVisible(entry.getKey(), playerChunk, radius)) {
-                visibleBlockCount += entry.getValue().positions.length;
-            }
+            if (!isChunkWithinRadius(entry.getKey(), playerChunk, radius)
+                    || !isChunkOnScreen(pose, entry.getKey(), entry.getValue(), centerX, centerZ,
+                    centerY, renderMinY, renderMaxY, viewportWidth, viewportHeight)) continue;
+
+            visibleChunks.add(entry);
+            visibleBlockCount += entry.getValue().positions.length;
         }
+        if (visibleChunks.isEmpty()) return;
+
         boolean reducedDetail = visibleBlockCount >= REDUCED_DETAIL_BLOCK_THRESHOLD;
         double detailRadius = Math.min(72.0, Math.max(28.0, 18.0 + zoom * 10.0));
         double detailRadiusSq = detailRadius * detailRadius;
 
         BufferBuilder buf = Tesselator.getInstance().getBuilder();
-        Matrix4f pose = poseStack.last().pose();
 
         Direction cullDirection = null;
 
-        renderColorChunkBatches(buf, pose, data, playerChunk, radius, centerX, centerZ, centerY,
+        renderColorChunkBatches(buf, pose, visibleChunks, centerX, centerZ, centerY,
                 minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection,
                 reducedDetail, detailRadiusSq);
-        renderTexturedChunkBatches(buf, pose, data, playerChunk, radius, centerX, centerZ, centerY,
+        renderTexturedChunkBatches(buf, pose, visibleChunks, centerX, centerZ, centerY,
                 minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection,
                 reducedDetail, detailRadiusSq);
-        renderChestChunkBatches(buf, pose, data, playerChunk, radius, centerX, centerZ, centerY,
+        renderChestChunkBatches(buf, pose, visibleChunks, centerX, centerZ, centerY,
                 minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection,
                 reducedDetail, detailRadiusSq);
     }
 
     private static void renderColorChunkBatches(BufferBuilder buf, Matrix4f pose,
-                                                 Map<ChunkPos, ChunkScanner.ScannedChunk> data,
-                                                 ChunkPos playerChunk, int radius,
+                                                 List<Map.Entry<ChunkPos, ChunkScanner.ScannedChunk>> visibleChunks,
                                                  double centerX, double centerZ, double centerY,
                                                  int minBuildHeight, int minY, int maxY,
                                                  boolean isUnderground, Direction cullDirection,
@@ -1079,11 +1088,10 @@ public class VoxelMapRenderer {
         boolean building = false;
         int batchedBlocks = 0;
 
-        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
+        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : visibleChunks) {
             ChunkPos cp = entry.getKey();
             ChunkScanner.ScannedChunk chunkData = entry.getValue();
-            if (!isChunkVisible(cp, playerChunk, radius)
-                    || (!chunkData.hasColorBlocks && !reducedDetail)) continue;
+            if (!chunkData.hasColorBlocks && !reducedDetail) continue;
 
             int blockCount = chunkData.positions.length;
             if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
@@ -1106,8 +1114,7 @@ public class VoxelMapRenderer {
     }
 
     private static void renderTexturedChunkBatches(BufferBuilder buf, Matrix4f pose,
-                                                    Map<ChunkPos, ChunkScanner.ScannedChunk> data,
-                                                    ChunkPos playerChunk, int radius,
+                                                    List<Map.Entry<ChunkPos, ChunkScanner.ScannedChunk>> visibleChunks,
                                                     double centerX, double centerZ, double centerY,
                                                     int minBuildHeight, int minY, int maxY,
                                                     boolean isUnderground, Direction cullDirection,
@@ -1117,10 +1124,10 @@ public class VoxelMapRenderer {
         boolean building = false;
         int batchedBlocks = 0;
 
-        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
+        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : visibleChunks) {
             ChunkPos cp = entry.getKey();
             ChunkScanner.ScannedChunk chunkData = entry.getValue();
-            if (!isChunkVisible(cp, playerChunk, radius) || !chunkData.hasTexturedBlocks) continue;
+            if (!chunkData.hasTexturedBlocks) continue;
 
             int blockCount = chunkData.positions.length;
             if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
@@ -1143,8 +1150,7 @@ public class VoxelMapRenderer {
     }
 
     private static void renderChestChunkBatches(BufferBuilder buf, Matrix4f pose,
-                                                 Map<ChunkPos, ChunkScanner.ScannedChunk> data,
-                                                 ChunkPos playerChunk, int radius,
+                                                 List<Map.Entry<ChunkPos, ChunkScanner.ScannedChunk>> visibleChunks,
                                                  double centerX, double centerZ, double centerY,
                                                  int minBuildHeight, int minY, int maxY,
                                                  boolean isUnderground, Direction cullDirection,
@@ -1154,10 +1160,10 @@ public class VoxelMapRenderer {
         boolean building = false;
         int batchedBlocks = 0;
 
-        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
+        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : visibleChunks) {
             ChunkPos cp = entry.getKey();
             ChunkScanner.ScannedChunk chunkData = entry.getValue();
-            if (!isChunkVisible(cp, playerChunk, radius) || !chunkData.hasChests) continue;
+            if (!chunkData.hasChests) continue;
 
             int blockCount = chunkData.positions.length;
             if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
@@ -1180,9 +1186,48 @@ public class VoxelMapRenderer {
         RenderSystem.enableCull();
     }
 
-    private static boolean isChunkVisible(ChunkPos pos, ChunkPos center, int radius) {
+    private static boolean isChunkWithinRadius(ChunkPos pos, ChunkPos center, int radius) {
         return radius <= 0
                 || (Math.abs(pos.x - center.x) <= radius && Math.abs(pos.z - center.z) <= radius);
+    }
+
+    private static boolean isChunkOnScreen(Matrix4f pose, ChunkPos pos,
+                                           ChunkScanner.ScannedChunk chunkData,
+                                           double centerX, double centerZ, double centerY,
+                                           int minY, int maxY, int viewportWidth,
+                                           int viewportHeight) {
+        if (chunkData.positions.length == 0) return false;
+
+        int clippedMinY = Math.max(minY, chunkData.minBlockY);
+        int clippedMaxY = Math.min(maxY, chunkData.maxBlockY);
+        if (clippedMinY > clippedMaxY) return false;
+
+        float x0 = (float)(pos.getMinBlockX() - centerX);
+        float x1 = x0 + 16.0f;
+        float y0 = (float)(clippedMinY - centerY);
+        float y1 = (float)(clippedMaxY + 1.0 - centerY);
+        float z0 = (float)(pos.getMinBlockZ() - centerZ);
+        float z1 = z0 + 16.0f;
+
+        boolean allLeft = true;
+        boolean allRight = true;
+        boolean allAbove = true;
+        boolean allBelow = true;
+
+        for (int corner = 0; corner < 8; corner++) {
+            float x = (corner & 1) == 0 ? x0 : x1;
+            float y = (corner & 2) == 0 ? y0 : y1;
+            float z = (corner & 4) == 0 ? z0 : z1;
+            float screenX = pose.m00() * x + pose.m10() * y + pose.m20() * z + pose.m30();
+            float screenY = pose.m01() * x + pose.m11() * y + pose.m21() * z + pose.m31();
+
+            allLeft &= screenX < -VIEWPORT_CULL_MARGIN;
+            allRight &= screenX > viewportWidth + VIEWPORT_CULL_MARGIN;
+            allAbove &= screenY < -VIEWPORT_CULL_MARGIN;
+            allBelow &= screenY > viewportHeight + VIEWPORT_CULL_MARGIN;
+        }
+
+        return !(allLeft || allRight || allAbove || allBelow);
     }
 
     private static boolean isNormallyColorRendered(int renderType) {
