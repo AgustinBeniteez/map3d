@@ -9,74 +9,104 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.LinkedList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 
 import com.agustinbenitez.voxelview3d.VoxelView3D;
 
 import com.agustinbenitez.voxelview3d.client.ClientSettings;
+import com.agustinbenitez.voxelview3d.client.VoxelMapScreen;
 
 @Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
 public class WorldHandler {
-    private static int tickCounter = 40; // Start immediately
-    private static final Queue<ChunkPos> scanQueue = new LinkedList<>();
+    private static final int QUEUE_REFRESH_INTERVAL_TICKS = 20;
+    private static final int SCAN_INTERVAL_TICKS = 2;
+    private static final int MAX_STALE_CHUNKS_PER_REFRESH = 2;
+    private static final long CHUNK_REFRESH_AGE_TICKS = 600L;
+
+    private static int refreshTickCounter = QUEUE_REFRESH_INTERVAL_TICKS;
+    private static int scanTickCounter = SCAN_INTERVAL_TICKS;
+    private static final Queue<ChunkPos> scanQueue = new ArrayDeque<>();
+    private static final Set<Long> queuedChunks = new HashSet<>();
+    private static final Map<Long, Long> lastScanTicks = new HashMap<>();
+    private static boolean mapWasOpen;
     
     private static net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> lastDimension;
     private static ChunkPos lastPos;
 
     public static void reset() {
         ChunkScanner.clear();
-        scanQueue.clear();
+        clearScanQueue();
+        lastScanTicks.clear();
         lastDimension = null;
         lastPos = null;
-        tickCounter = 20; // Force refresh immediately
+        mapWasOpen = false;
+        refreshTickCounter = QUEUE_REFRESH_INTERVAL_TICKS;
+        scanTickCounter = SCAN_INTERVAL_TICKS;
     }
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+
         Minecraft mc = Minecraft.getInstance();
-        if (event.phase == TickEvent.Phase.END && mc.level != null && mc.player != null) {
-            
-            // Check for dimension change or large movement to force refresh
-            var currentDimension = mc.level.dimension();
-            ChunkPos currentPos = mc.player.chunkPosition();
-            
-            boolean dimensionChanged = lastDimension != null && !lastDimension.equals(currentDimension);
-            // If moved more than 2 chunks, refresh immediately (responsive)
-            boolean movedSignificantly = lastPos != null && (Math.abs(currentPos.x - lastPos.x) > 2 || Math.abs(currentPos.z - lastPos.z) > 2);
-            
-            if (dimensionChanged) {
+        boolean mapIsOpen = mc.screen instanceof VoxelMapScreen;
+
+        // The 3D scan is expensive and is useful only while its screen is visible.
+        if (!mapIsOpen || mc.level == null || mc.player == null) {
+            if (mapWasOpen) clearScanQueue();
+            mapWasOpen = false;
+            return;
+        }
+
+        if (!mapWasOpen) {
+            mapWasOpen = true;
+            refreshTickCounter = QUEUE_REFRESH_INTERVAL_TICKS;
+            scanTickCounter = SCAN_INTERVAL_TICKS;
+        }
+
+        var currentDimension = mc.level.dimension();
+        ChunkPos currentPos = mc.player.chunkPosition();
+
+        boolean dimensionChanged = lastDimension != null && !lastDimension.equals(currentDimension);
+        boolean movedSignificantly = lastPos != null
+                && (Math.abs(currentPos.x - lastPos.x) > 2 || Math.abs(currentPos.z - lastPos.z) > 2);
+
+        if (dimensionChanged) {
+            ChunkScanner.clear();
+            clearScanQueue();
+            lastScanTicks.clear();
+            refreshTickCounter = QUEUE_REFRESH_INTERVAL_TICKS;
+        } else if (movedSignificantly) {
+            // Drop queued work from the old position so nearby chunks have priority.
+            clearScanQueue();
+            refreshTickCounter = QUEUE_REFRESH_INTERVAL_TICKS;
+
+            if (Math.abs(currentPos.x - lastPos.x) > 10 || Math.abs(currentPos.z - lastPos.z) > 10) {
                 ChunkScanner.clear();
-                scanQueue.clear();
-                tickCounter = 20; // Force refresh immediately
-            } else if (movedSignificantly) {
-                 tickCounter = 20; // Force refresh immediately
-                 // If moved VERY far (teleport), clear cache to avoid artifacts/memory usage
-                 if (Math.abs(currentPos.x - lastPos.x) > 10 || Math.abs(currentPos.z - lastPos.z) > 10) {
-                     ChunkScanner.clear();
-                     scanQueue.clear();
-                 }
+                lastScanTicks.clear();
             }
-            
-            lastDimension = currentDimension;
-            lastPos = currentPos;
-            
-            tickCounter++;
-            
-            // Periodically refresh the scan queue (every 1 second = 20 ticks)
-            // Faster refresh to respond to movement
-            if (tickCounter >= 20) {
-                tickCounter = 0;
-                refreshScanQueue();
-            }
-            
-            // Process scan queue (Update Delay: 100ms = 2 ticks)
-            // Faster processing
-            if (tickCounter % 2 == 0) {
-                processScanQueue(5);
-            }
+        }
+
+        lastDimension = currentDimension;
+        lastPos = currentPos;
+
+        if (++refreshTickCounter >= QUEUE_REFRESH_INTERVAL_TICKS) {
+            refreshTickCounter = 0;
+            refreshScanQueue();
+        }
+
+        // Scan one chunk at a time to spread the work across frames.
+        if (++scanTickCounter >= SCAN_INTERVAL_TICKS) {
+            scanTickCounter = 0;
+            processScanQueue(1);
         }
     }
 
@@ -85,36 +115,59 @@ public class WorldHandler {
         if (mc.player == null || mc.level == null) return;
 
         ChunkPos playerPos = mc.player.chunkPosition();
-        int radius = ClientSettings.renderDistance; // Use setting
+        int radius = ClientSettings.renderDistance;
+        long currentTick = mc.level.getGameTime();
         
-        // Prune old chunks first
-        ChunkScanner.prune(playerPos, radius + 2); // Keep a bit more than scan radius
-
-        // Clear existing queue to prioritize new position
-        scanQueue.clear();
+        ChunkScanner.prune(playerPos, radius + 2);
+        lastScanTicks.keySet().removeIf(key -> isOutsideRadius(new ChunkPos(key), playerPos, radius + 2));
         
-        // Collect chunks in range
-        List<ChunkPos> chunks = new ArrayList<>();
+        List<ChunkPos> missingChunks = new ArrayList<>();
+        List<ChunkPos> staleChunks = new ArrayList<>();
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                chunks.add(new ChunkPos(playerPos.x + x, playerPos.z + z));
+                ChunkPos pos = new ChunkPos(playerPos.x + x, playerPos.z + z);
+                long key = pos.toLong();
+                if (queuedChunks.contains(key)) continue;
+
+                Long lastScanTick = lastScanTicks.get(key);
+                if (!ChunkScanner.contains(pos)) {
+                    missingChunks.add(pos);
+                } else if (lastScanTick == null || currentTick - lastScanTick >= CHUNK_REFRESH_AGE_TICKS) {
+                    staleChunks.add(pos);
+                }
             }
         }
         
-        // Sort by distance to player (closest first)
-        chunks.sort((c1, c2) -> {
-            double d1 = distSq(c1, playerPos);
-            double d2 = distSq(c2, playerPos);
-            return Double.compare(d1, d2);
-        });
-        
-        scanQueue.addAll(chunks);
+        missingChunks.sort(Comparator.comparingInt(pos -> distSq(pos, playerPos)));
+        for (ChunkPos pos : missingChunks) enqueue(pos);
+
+        // Refresh only a small number of old chunks per second. This keeps block
+        // changes visible without continuously rescanning the entire map.
+        staleChunks.sort(Comparator
+                .comparingLong((ChunkPos pos) -> lastScanTicks.getOrDefault(pos.toLong(), Long.MIN_VALUE))
+                .thenComparingInt(pos -> distSq(pos, playerPos)));
+        for (int i = 0; i < Math.min(MAX_STALE_CHUNKS_PER_REFRESH, staleChunks.size()); i++) {
+            enqueue(staleChunks.get(i));
+        }
     }
     
-    private static double distSq(ChunkPos c1, ChunkPos c2) {
-        double dx = c1.x - c2.x;
-        double dz = c1.z - c2.z;
+    private static int distSq(ChunkPos c1, ChunkPos c2) {
+        int dx = c1.x - c2.x;
+        int dz = c1.z - c2.z;
         return dx * dx + dz * dz;
+    }
+
+    private static boolean isOutsideRadius(ChunkPos pos, ChunkPos center, int radius) {
+        return Math.abs(pos.x - center.x) > radius || Math.abs(pos.z - center.z) > radius;
+    }
+
+    private static void enqueue(ChunkPos pos) {
+        if (queuedChunks.add(pos.toLong())) scanQueue.add(pos);
+    }
+
+    private static void clearScanQueue() {
+        scanQueue.clear();
+        queuedChunks.clear();
     }
     
     private static void processScanQueue(int chunksToScan) {
@@ -124,10 +177,12 @@ public class WorldHandler {
         for (int i = 0; i < chunksToScan; i++) {
             ChunkPos pos = scanQueue.poll();
             if (pos == null) break;
+            queuedChunks.remove(pos.toLong());
             
             LevelChunk chunk = (LevelChunk) mc.level.getChunk(pos.x, pos.z, ChunkStatus.FULL, false);
             if (chunk != null) {
                 ChunkScanner.scanChunk(chunk);
+                lastScanTicks.put(pos.toLong(), mc.level.getGameTime());
             }
         }
     }

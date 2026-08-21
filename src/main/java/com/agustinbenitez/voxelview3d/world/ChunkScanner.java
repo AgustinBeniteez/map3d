@@ -24,9 +24,8 @@ import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import net.minecraft.world.level.block.ButtonBlock;
@@ -80,11 +79,46 @@ public class ChunkScanner {
         public final int[] positions;
         public final int[] colors;
         public final byte[] lights;
+        public final boolean hasColorBlocks;
+        public final boolean hasTexturedBlocks;
+        public final boolean hasChests;
         
-        public ScannedChunk(int[] positions, int[] colors, byte[] lights) {
+        public ScannedChunk(int[] positions, int[] colors, byte[] lights,
+                            boolean hasColorBlocks, boolean hasTexturedBlocks, boolean hasChests) {
             this.positions = positions;
             this.colors = colors;
             this.lights = lights;
+            this.hasColorBlocks = hasColorBlocks;
+            this.hasTexturedBlocks = hasTexturedBlocks;
+            this.hasChests = hasChests;
+        }
+    }
+
+    private static final class IntArrayBuilder {
+        private int[] values = new int[2048];
+        private int size;
+
+        void add(int value) {
+            if (size == values.length) values = Arrays.copyOf(values, values.length * 2);
+            values[size++] = value;
+        }
+
+        int[] toArray() {
+            return Arrays.copyOf(values, size);
+        }
+    }
+
+    private static final class ByteArrayBuilder {
+        private byte[] values = new byte[2048];
+        private int size;
+
+        void add(byte value) {
+            if (size == values.length) values = Arrays.copyOf(values, values.length * 2);
+            values[size++] = value;
+        }
+
+        byte[] toArray() {
+            return Arrays.copyOf(values, size);
         }
     }
     
@@ -149,12 +183,21 @@ public class ChunkScanner {
     public static void scanChunk(LevelChunk chunk) {
         ChunkPos pos = chunk.getPos();
         
-        List<Integer> positions = new ArrayList<>();
-        List<Integer> colors = new ArrayList<>();
-        List<Byte> lights = new ArrayList<>();
+        IntArrayBuilder positions = new IntArrayBuilder();
+        IntArrayBuilder colors = new IntArrayBuilder();
+        ByteArrayBuilder lights = new ByteArrayBuilder();
+        boolean hasColorBlocks = false;
+        boolean hasTexturedBlocks = false;
+        boolean hasChests = false;
         
         LevelChunkSection[] sections = chunk.getSections();
         int minBuildHeight = chunk.getMinBuildHeight();
+        int[] surfaceHeights = new int[16 * 16];
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                surfaceHeights[(x << 4) | z] = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+            }
+        }
         
         for (int i = 0; i < sections.length; i++) {
             LevelChunkSection section = sections[i];
@@ -186,7 +229,7 @@ public class ChunkScanner {
 
                             // Also check if it's the top surface block (Heightmap check)
                             // This ensures top soil is always drawn even if surrounded by other blocks locally
-                            int surfaceHeight = chunk.getHeight(Heightmap.Types.WORLD_SURFACE, x, z);
+                            int surfaceHeight = surfaceHeights[(x << 4) | z];
                             if (worldY == surfaceHeight - 1) exposedFaces |= 8; // Force UP face exposed
 
                             // If any face is exposed, or if we force it (for debugging/safety)
@@ -638,6 +681,20 @@ public class ChunkScanner {
                                 int packed = (x & 0xF) | ((z & 0xF) << 4) | ((relY & 0x1FF) << 8) | ((renderType & 0x7F) << 17) | ((exposedFaces & 0x3F) << 24);
                                 
                                 positions.add(packed);
+
+                                if (renderType == RENDER_CHEST) {
+                                    hasChests = true;
+                                } else if (renderType >= RENDER_CHEST
+                                        && renderType != RENDER_RAIL
+                                        && renderType != RENDER_REPEATER
+                                        && renderType != RENDER_COMPARATOR
+                                        && renderType != RENDER_PISTON
+                                        && renderType != RENDER_CHAIN
+                                        && !(renderType >= 41 && renderType <= RENDER_MOSS_CARPET)) {
+                                    hasTexturedBlocks = true;
+                                } else {
+                                    hasColorBlocks = true;
+                                }
                                 
                                 // Color
                                 int color = 0;
@@ -813,13 +870,9 @@ public class ChunkScanner {
             }
         }
         
-        // Convert to arrays
-        int[] posArray = positions.stream().mapToInt(i -> i).toArray();
-        int[] colArray = colors.stream().mapToInt(i -> i).toArray();
-        byte[] lightArray = new byte[lights.size()];
-        for(int i=0; i<lights.size(); i++) lightArray[i] = lights.get(i);
-        
-        CHUNK_DATA.put(pos, new ScannedChunk(posArray, colArray, lightArray));
+        CHUNK_DATA.put(pos, new ScannedChunk(
+                positions.toArray(), colors.toArray(), lights.toArray(),
+                hasColorBlocks, hasTexturedBlocks, hasChests));
     }
     
     private static boolean isTransparent(LevelChunk chunk, int x, int y, int z, BlockState selfState) {
@@ -873,6 +926,10 @@ public class ChunkScanner {
     
     public static Map<ChunkPos, ScannedChunk> getData() {
         return CHUNK_DATA;
+    }
+
+    public static boolean contains(ChunkPos pos) {
+        return CHUNK_DATA.containsKey(pos);
     }
     
     public static void clear() {

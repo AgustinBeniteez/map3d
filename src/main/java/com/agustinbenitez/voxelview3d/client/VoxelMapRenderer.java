@@ -54,6 +54,8 @@ public class VoxelMapRenderer {
 
     // Global State for UI
     public static boolean isUndergroundState = false;
+    private static final int MAX_BLOCKS_PER_BATCH = 12_000;
+    private static final RandomSource MODEL_RANDOM = RandomSource.create(0L);
 
     public static void renderMap(PoseStack poseStack, float zoom, float cameraPitch, float cameraYaw, boolean isHud, int renderRadius) {
         Minecraft mc = Minecraft.getInstance();
@@ -266,7 +268,8 @@ public class VoxelMapRenderer {
         float y_min = y0;
         float y_max = y1;
         
-        RandomSource rand = RandomSource.create();
+        MODEL_RANDOM.setSeed(0L);
+        RandomSource rand = MODEL_RANDOM;
         
         // Top Face (y1) - Face Y+ - Bit 3 (8)
         if ((exposedFaces & 8) != 0) {
@@ -463,7 +466,8 @@ public class VoxelMapRenderer {
     }
 
     private static void renderBakedModel(BufferBuilder buf, Matrix4f pose, double x, double y, double z, BakedModel model, BlockState state, float r, float g, float b, float a, int exposedFaces, Level level, BlockPos pos) {
-        RandomSource rand = RandomSource.create();
+        MODEL_RANDOM.setSeed(0L);
+        RandomSource rand = MODEL_RANDOM;
         
         // Iterate over directions based on exposedFaces
         // Bits: 0=West, 1=East, 2=Down, 3=Up, 4=North, 5=South
@@ -554,31 +558,15 @@ public class VoxelMapRenderer {
         int[] packedPositions = chunkData.positions;
         byte[] lights = chunkData.lights;
         if (packedPositions == null) return;
-        
-        // Pass 1: Single Chests
-        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, cullDirection, 0);
-        // Pass 2: Left Chests
-        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, cullDirection, 1);
-        // Pass 3: Right Chests
-        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY, minBuildHeight, minY, maxY, isUnderground, cullDirection, 2);
+
+        renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY,
+                minBuildHeight, minY, maxY, isUnderground, cullDirection);
     }
 
-    private static void renderChestPass(BufferBuilder buf, Matrix4f pose, int[] positions, byte[] lights, ChunkPos cp, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection, int targetType) {
-        // Use standard POSITION_COLOR shader (no texture binding needed for manual geometry)
-        // Ensure shader is set before calling this if not already set, or set here?
-        // Caller (renderChunks) sets POSITION_COLOR before calling renderChunkChests.
-        // But renderChunkChests was setting texture before.
-        // We need to ensure we are in POSITION_COLOR mode.
-        // Actually, renderChunks calls renderChunkChests then restores POSITION_COLOR.
-        // So we can assume POSITION_COLOR is active if we don't change it, OR we should explicitly set it if we want to be safe.
-        // But since we are inside a method that might be called in sequence, let's just assume the builder is ready for COLOR.
-        // Wait, the previous implementation used POSITION_TEX_COLOR and bound a texture.
-        // We need to switch to POSITION_COLOR.
-        
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        RenderSystem.disableCull(); // Disable Cull for manual geometry to ensure visibility regardless of winding
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        
+    private static void renderChestPass(BufferBuilder buf, Matrix4f pose, int[] positions, byte[] lights,
+                                        ChunkPos cp, double centerX, double centerZ, double centerY,
+                                        int minBuildHeight, int minY, int maxY, boolean isUnderground,
+                                        Direction cullDirection) {
         for (int i = 0; i < positions.length; i++) {
             int packed = positions[i];
             int renderType = (packed >> 17) & 0x7F;
@@ -587,8 +575,6 @@ public class VoxelMapRenderer {
             
             int exposedFaces = (packed >> 24) & 0x3F;
             int type = (exposedFaces >> 2) & 0x3;
-            
-            if (type != targetType) continue;
             
             int facingIdx = exposedFaces & 0x3; // 0=N, 1=S, 2=E, 3=W
             
@@ -648,9 +634,6 @@ public class VoxelMapRenderer {
             
             renderChestModelManual(buf, localPose, type, brightness);
         }
-        
-        BufferUploader.drawWithShader(buf.end());
-        RenderSystem.enableCull(); // Re-enable Cull
     }
 
     private static void renderChestModelManual(BufferBuilder buf, Matrix4f pose, int type, float b) {
@@ -1068,87 +1051,131 @@ public class VoxelMapRenderer {
         ChunkPos playerChunk = player.chunkPosition();
         Map<ChunkPos, ChunkScanner.ScannedChunk> data = ChunkScanner.getData();
         
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        
+        if (data.isEmpty()) return;
+
+        BufferBuilder buf = Tesselator.getInstance().getBuilder();
         Matrix4f pose = poseStack.last().pose();
-        
-        // Calculate Cull Direction (Sims 4 Style Wall Culling)
-        // Based on Camera Yaw.
-        // User feedback: "depending on where you are looking like in Sims 4"
-        // In Sims 4 (isometric), the walls facing the camera are culled so you can see inside.
-        // If camera is Looking South (Yaw 0), the camera is positioned North.
-        // The walls blocking the view are the North walls (behind the player).
-        // So: Look South -> Cull North.
+
         Direction cullDirection = null;
-        /*
-        if (isUnderground) {
-            float yaw = (cameraYaw % 360 + 360) % 360;
-            if (yaw >= 315 || yaw < 45) { // South (0)
-                cullDirection = Direction.NORTH;
-            } else if (yaw >= 45 && yaw < 135) { // West (90)
-                cullDirection = Direction.EAST;
-            } else if (yaw >= 135 && yaw < 225) { // North (180)
-                cullDirection = Direction.SOUTH;
-            } else { // East (270)
-                cullDirection = Direction.WEST;
-            }
-        }
-        */
 
-        if (radius > 0) {
-            // Optimized loop: only iterate nearby chunks (coordinate loop)
-            for (int x = -radius; x <= radius; x++) {
-                for (int z = -radius; z <= radius; z++) {
-                     ChunkPos cp = new ChunkPos(playerChunk.x + x, playerChunk.z + z);
-                     ChunkScanner.ScannedChunk chunkData = data.get(cp);
-                     if (chunkData != null) {
-                         // Check Version?
-                         // If version mismatch, we could request rescan, but scan is server/world thread based.
-                         // For now, assume if data exists it is valid or will be replaced eventually.
-                         
-                         // Flush per chunk to avoid massive buffers (OutOfMemory)
-                         buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-                         renderChunkBlocks(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
-                         BufferUploader.drawWithShader(buf.end());
-                         
-                         // Textured Pass
-                         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
-                         RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
-                         buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-                         renderChunkBlocksTextured(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
-                         BufferUploader.drawWithShader(buf.end());
-                         
-                         // Chest Pass
-                         renderChunkChests(buf, pose, cp, chunkData, centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
-                         
-                         // Restore Shader for next iteration
-                         RenderSystem.setShader(GameRenderer::getPositionColorShader);
-                     }
-                }
+        renderColorChunkBatches(buf, pose, data, playerChunk, radius, centerX, centerZ, centerY,
+                minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
+        renderTexturedChunkBatches(buf, pose, data, playerChunk, radius, centerX, centerZ, centerY,
+                minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
+        renderChestChunkBatches(buf, pose, data, playerChunk, radius, centerX, centerZ, centerY,
+                minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
+    }
+
+    private static void renderColorChunkBatches(BufferBuilder buf, Matrix4f pose,
+                                                 Map<ChunkPos, ChunkScanner.ScannedChunk> data,
+                                                 ChunkPos playerChunk, int radius,
+                                                 double centerX, double centerZ, double centerY,
+                                                 int minBuildHeight, int minY, int maxY,
+                                                 boolean isUnderground, Direction cullDirection,
+                                                 int visibleFacesMask) {
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        boolean building = false;
+        int batchedBlocks = 0;
+
+        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
+            ChunkPos cp = entry.getKey();
+            ChunkScanner.ScannedChunk chunkData = entry.getValue();
+            if (!isChunkVisible(cp, playerChunk, radius) || !chunkData.hasColorBlocks) continue;
+
+            int blockCount = chunkData.positions.length;
+            if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
+                BufferUploader.drawWithShader(buf.end());
+                building = false;
+                batchedBlocks = 0;
             }
-        } else {
-            // Render all scanned chunks (for full map)
-            for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
+            if (!building) {
                 buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-                renderChunkBlocks(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
-                BufferUploader.drawWithShader(buf.end());
-                
-                // Textured Pass
-                RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
-                RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
-                buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-                renderChunkBlocksTextured(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
-                BufferUploader.drawWithShader(buf.end());
-
-                // Chest Pass
-                renderChunkChests(buf, pose, entry.getKey(), entry.getValue(), centerX, centerZ, centerY, minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
-                
-                // Restore Shader
-                RenderSystem.setShader(GameRenderer::getPositionColorShader);
+                building = true;
             }
+
+            renderChunkBlocks(buf, pose, cp, chunkData, centerX, centerZ, centerY,
+                    minBuildHeight, minY, maxY, isUnderground, cullDirection, visibleFacesMask);
+            batchedBlocks += blockCount;
         }
+
+        if (building) BufferUploader.drawWithShader(buf.end());
+    }
+
+    private static void renderTexturedChunkBatches(BufferBuilder buf, Matrix4f pose,
+                                                    Map<ChunkPos, ChunkScanner.ScannedChunk> data,
+                                                    ChunkPos playerChunk, int radius,
+                                                    double centerX, double centerZ, double centerY,
+                                                    int minBuildHeight, int minY, int maxY,
+                                                    boolean isUnderground, Direction cullDirection,
+                                                    int visibleFacesMask) {
+        RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
+        RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
+        boolean building = false;
+        int batchedBlocks = 0;
+
+        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
+            ChunkPos cp = entry.getKey();
+            ChunkScanner.ScannedChunk chunkData = entry.getValue();
+            if (!isChunkVisible(cp, playerChunk, radius) || !chunkData.hasTexturedBlocks) continue;
+
+            int blockCount = chunkData.positions.length;
+            if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
+                BufferUploader.drawWithShader(buf.end());
+                building = false;
+                batchedBlocks = 0;
+            }
+            if (!building) {
+                buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+                building = true;
+            }
+
+            renderChunkBlocksTextured(buf, pose, cp, chunkData, centerX, centerZ, centerY,
+                    minBuildHeight, minY, maxY, isUnderground, cullDirection, visibleFacesMask);
+            batchedBlocks += blockCount;
+        }
+
+        if (building) BufferUploader.drawWithShader(buf.end());
+    }
+
+    private static void renderChestChunkBatches(BufferBuilder buf, Matrix4f pose,
+                                                 Map<ChunkPos, ChunkScanner.ScannedChunk> data,
+                                                 ChunkPos playerChunk, int radius,
+                                                 double centerX, double centerZ, double centerY,
+                                                 int minBuildHeight, int minY, int maxY,
+                                                 boolean isUnderground, Direction cullDirection) {
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        RenderSystem.disableCull();
+        boolean building = false;
+        int batchedBlocks = 0;
+
+        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
+            ChunkPos cp = entry.getKey();
+            ChunkScanner.ScannedChunk chunkData = entry.getValue();
+            if (!isChunkVisible(cp, playerChunk, radius) || !chunkData.hasChests) continue;
+
+            int blockCount = chunkData.positions.length;
+            if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
+                BufferUploader.drawWithShader(buf.end());
+                building = false;
+                batchedBlocks = 0;
+            }
+            if (!building) {
+                buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+                building = true;
+            }
+
+            renderChunkChests(buf, pose, cp, chunkData, centerX, centerZ, centerY,
+                    minBuildHeight, minY, maxY, isUnderground, cullDirection);
+            batchedBlocks += blockCount;
+        }
+
+        if (building) BufferUploader.drawWithShader(buf.end());
+        RenderSystem.enableCull();
+    }
+
+    private static boolean isChunkVisible(ChunkPos pos, ChunkPos center, int radius) {
+        return radius <= 0
+                || (Math.abs(pos.x - center.x) <= radius && Math.abs(pos.z - center.z) <= radius);
     }
     
     private static void renderChunkBlocks(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection, int visibleFacesMask) {
@@ -2709,12 +2736,6 @@ public class VoxelMapRenderer {
         }
     }
 
-    private static net.minecraft.client.renderer.texture.TextureAtlasSprite getWhiteSprite() {
-        return net.minecraft.client.Minecraft.getInstance().getBlockRenderer().getBlockModel(net.minecraft.world.level.block.Blocks.WHITE_CONCRETE.defaultBlockState()).getParticleIcon();
-    }
-
-
-    
     private static void renderEntities(PoseStack poseStack, Player player, int minY, int maxY, int radius, double cameraY) {
         double centerX = player.getX();
         double centerZ = player.getZ();
@@ -2975,46 +2996,41 @@ public class VoxelMapRenderer {
         int blue = (int)(b * 255);
         int alpha = (int)(a * 255);
 
-        // Fix Null Texture: Use White Concrete particle icon for UVs
-        net.minecraft.client.renderer.texture.TextureAtlasSprite sprite = getWhiteSprite();
-        float u = (sprite.getU0() + sprite.getU1()) / 2.0f;
-        float v = (sprite.getV0() + sprite.getV1()) / 2.0f;
-        
         // Top
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
         
         // Bottom
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
         
         // Front
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
         
         // Back
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
         
         // Left
-        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, minX, maxY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, minX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
         
         // Right
-        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
-        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).uv(u, v).endVertex();
+        buf.vertex(pose, maxX, maxY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, maxZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, minY, minZ).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, maxX, maxY, minZ).color(red, green, blue, alpha).endVertex();
     }
     
     private static void renderTexturedHead(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float size) {
