@@ -79,15 +79,17 @@ public class ChunkScanner {
         public final int[] positions;
         public final int[] colors;
         public final byte[] lights;
+        public final byte[] geometryFaces;
         public final boolean hasColorBlocks;
         public final boolean hasTexturedBlocks;
         public final boolean hasChests;
         
-        public ScannedChunk(int[] positions, int[] colors, byte[] lights,
+        public ScannedChunk(int[] positions, int[] colors, byte[] lights, byte[] geometryFaces,
                             boolean hasColorBlocks, boolean hasTexturedBlocks, boolean hasChests) {
             this.positions = positions;
             this.colors = colors;
             this.lights = lights;
+            this.geometryFaces = geometryFaces;
             this.hasColorBlocks = hasColorBlocks;
             this.hasTexturedBlocks = hasTexturedBlocks;
             this.hasChests = hasChests;
@@ -186,6 +188,7 @@ public class ChunkScanner {
         IntArrayBuilder positions = new IntArrayBuilder();
         IntArrayBuilder colors = new IntArrayBuilder();
         ByteArrayBuilder lights = new ByteArrayBuilder();
+        ByteArrayBuilder geometryFaces = new ByteArrayBuilder();
         boolean hasColorBlocks = false;
         boolean hasTexturedBlocks = false;
         boolean hasChests = false;
@@ -234,6 +237,7 @@ public class ChunkScanner {
 
                             // If any face is exposed, or if we force it (for debugging/safety)
                             if (exposedFaces != 0) {
+                                int geometryFaceMask = exposedFaces;
                                 // Determine Render Type and Special Color
                                 int renderType = RENDER_BLOCK;
                                 boolean isTorch = false;
@@ -863,6 +867,7 @@ public class ChunkScanner {
                                     light = state.getLightEmission(); // Fallback
                                 }
                                 lights.add((byte)light);
+                                geometryFaces.add((byte)geometryFaceMask);
                             }
                         }
                     }
@@ -871,7 +876,7 @@ public class ChunkScanner {
         }
         
         CHUNK_DATA.put(pos, new ScannedChunk(
-                positions.toArray(), colors.toArray(), lights.toArray(),
+                positions.toArray(), colors.toArray(), lights.toArray(), geometryFaces.toArray(),
                 hasColorBlocks, hasTexturedBlocks, hasChests));
     }
     

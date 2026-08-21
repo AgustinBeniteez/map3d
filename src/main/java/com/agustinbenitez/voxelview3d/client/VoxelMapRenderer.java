@@ -23,6 +23,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector4f;
 
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.Map;
 
 import net.minecraft.world.level.block.Blocks;
@@ -41,8 +42,6 @@ import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.core.Direction;
 import net.minecraft.core.BlockPos;
 import net.minecraft.client.renderer.entity.EntityRenderer;
-import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.client.renderer.block.model.BakedQuad;
@@ -55,6 +54,7 @@ public class VoxelMapRenderer {
     // Global State for UI
     public static boolean isUndergroundState = false;
     private static final int MAX_BLOCKS_PER_BATCH = 12_000;
+    private static final long REDUCED_DETAIL_BLOCK_THRESHOLD = 70_000L;
     private static final RandomSource MODEL_RANDOM = RandomSource.create(0L);
 
     public static void renderMap(PoseStack poseStack, float zoom, float cameraPitch, float cameraYaw, boolean isHud, int renderRadius) {
@@ -224,11 +224,9 @@ public class VoxelMapRenderer {
         // Update Global State for UI
         isUndergroundState = isUnderground;
 
-        // Calculate Visible Faces Mask for Optimization
-        int visibleFacesMask = calculateVisibleFaces(cameraPitch, cameraYaw);
-        
         // Render Chunks
-        renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY, isUnderground, cameraYaw, cameraY, visibleFacesMask);
+        renderChunks(poseStack, player, renderRadius, minBuildHeight, renderMinY, renderMaxY,
+                isUnderground, cameraY, zoom);
         
         // Nether Lava Floor Fallback
         // If in Nether and we are high up, render a flat lava plane at y=31 to simulate the ocean
@@ -238,7 +236,8 @@ public class VoxelMapRenderer {
         }
         
         // Render Entities
-        renderEntities(poseStack, player, renderMinY, renderMaxY, renderRadius, cameraY);
+        renderEntities(poseStack, player, renderMinY, renderMaxY, renderRadius,
+                cameraY, cameraYaw, cameraPitch);
 
         // Render Chunk Grid
         renderChunkGrid(poseStack, player, renderRadius);
@@ -358,7 +357,12 @@ public class VoxelMapRenderer {
         return model.getParticleIcon();
     }
     
-    private static void renderChunkBlocksTextured(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection, int visibleFacesMask) {
+    private static void renderChunkBlocksTextured(BufferBuilder buf, Matrix4f pose, ChunkPos cp,
+                                                  ChunkScanner.ScannedChunk chunkData,
+                                                  double centerX, double centerZ, double centerY,
+                                                  int minBuildHeight, int minY, int maxY,
+                                                  boolean isUnderground, Direction cullDirection,
+                                                  boolean reducedDetail, double detailRadiusSq) {
         int[] packedPositions = chunkData.positions;
         int[] colors = chunkData.colors;
         byte[] lights = chunkData.lights;
@@ -383,6 +387,10 @@ public class VoxelMapRenderer {
             double rx = (cp.x * 16 + x) - centerX;
             double ry = h - centerY;
             double rz = (cp.z * 16 + z) - centerZ;
+
+            // Far special blocks are represented by cheap colored geometry in
+            // the main pass when the scene is unusually dense.
+            if (reducedDetail && rx * rx + rz * rz > detailRadiusSq) continue;
             
             // Sims 4 Style Culling (Wall Cutaway)
             if (isUnderground && cullDirection != null) {
@@ -554,19 +562,26 @@ public class VoxelMapRenderer {
         }
     }
 
-    private static void renderChunkChests(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection) {
+    private static void renderChunkChests(BufferBuilder buf, Matrix4f pose, ChunkPos cp,
+                                          ChunkScanner.ScannedChunk chunkData,
+                                          double centerX, double centerZ, double centerY,
+                                          int minBuildHeight, int minY, int maxY,
+                                          boolean isUnderground, Direction cullDirection,
+                                          boolean reducedDetail, double detailRadiusSq) {
         int[] packedPositions = chunkData.positions;
         byte[] lights = chunkData.lights;
         if (packedPositions == null) return;
 
         renderChestPass(buf, pose, packedPositions, lights, cp, centerX, centerZ, centerY,
-                minBuildHeight, minY, maxY, isUnderground, cullDirection);
+                minBuildHeight, minY, maxY, isUnderground, cullDirection,
+                reducedDetail, detailRadiusSq);
     }
 
     private static void renderChestPass(BufferBuilder buf, Matrix4f pose, int[] positions, byte[] lights,
                                         ChunkPos cp, double centerX, double centerZ, double centerY,
                                         int minBuildHeight, int minY, int maxY, boolean isUnderground,
-                                        Direction cullDirection) {
+                                        Direction cullDirection, boolean reducedDetail,
+                                        double detailRadiusSq) {
         for (int i = 0; i < positions.length; i++) {
             int packed = positions[i];
             int renderType = (packed >> 17) & 0x7F;
@@ -588,6 +603,8 @@ public class VoxelMapRenderer {
             double rx = (cp.x * 16 + x) + 0.5 - centerX;
             double ry = h - centerY;
             double rz = (cp.z * 16 + z) + 0.5 - centerZ;
+
+            if (reducedDetail && rx * rx + rz * rz > detailRadiusSq) continue;
             
             // Sims 4 Style Culling (Wall Cutaway)
             if (isUnderground && cullDirection != null) {
@@ -1013,37 +1030,9 @@ public class VoxelMapRenderer {
         RenderSystem.enableDepthTest();
     }
     
-    private static int calculateVisibleFaces(float pitch, float yaw) {
-        int mask = 0;
-        
-        // Pitch: 90=Down, -90=Up
-        // If looking down (pitch > -45), we see Top faces (Bit 3 -> 8)
-        if (pitch > -45) mask |= 8;
-        // If looking up (pitch < 45), we see Bottom faces (Bit 2 -> 4)
-        if (pitch < 45) mask |= 4;
-        
-        // Yaw: 0=South (+Z), 90=West (-X), 180=North (-Z), 270=East (+X)
-        double rad = Math.toRadians(yaw);
-        double vx = -Math.sin(rad); // View Vector X
-        double vz = Math.cos(rad);  // View Vector Z
-        
-        // Epsilon for edge cases
-        double eps = 0.01;
-        
-        // If looking West (vx < 0), we see East faces (Bit 1 -> 2)
-        if (vx < eps) mask |= 2;
-        // If looking East (vx > 0), we see West faces (Bit 0 -> 1)
-        if (vx > -eps) mask |= 1;
-        
-        // If looking North (vz < 0), we see South faces (Bit 5 -> 32)
-        if (vz < eps) mask |= 32;
-        // If looking South (vz > 0), we see North faces (Bit 4 -> 16)
-        if (vz > -eps) mask |= 16;
-        
-        return mask;
-    }
-
-    private static void renderChunks(PoseStack poseStack, Player player, int radius, int minBuildHeight, int renderMinY, int renderMaxY, boolean isUnderground, float cameraYaw, double cameraY, int visibleFacesMask) {
+    private static void renderChunks(PoseStack poseStack, Player player, int radius, int minBuildHeight,
+                                     int renderMinY, int renderMaxY, boolean isUnderground,
+                                     double cameraY, float zoom) {
         double centerX = player.getX();
         double centerZ = player.getZ();
         double centerY = cameraY;
@@ -1053,17 +1042,30 @@ public class VoxelMapRenderer {
         
         if (data.isEmpty()) return;
 
+        long visibleBlockCount = 0L;
+        for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
+            if (isChunkVisible(entry.getKey(), playerChunk, radius)) {
+                visibleBlockCount += entry.getValue().positions.length;
+            }
+        }
+        boolean reducedDetail = visibleBlockCount >= REDUCED_DETAIL_BLOCK_THRESHOLD;
+        double detailRadius = Math.min(72.0, Math.max(28.0, 18.0 + zoom * 10.0));
+        double detailRadiusSq = detailRadius * detailRadius;
+
         BufferBuilder buf = Tesselator.getInstance().getBuilder();
         Matrix4f pose = poseStack.last().pose();
 
         Direction cullDirection = null;
 
         renderColorChunkBatches(buf, pose, data, playerChunk, radius, centerX, centerZ, centerY,
-                minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
+                minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection,
+                reducedDetail, detailRadiusSq);
         renderTexturedChunkBatches(buf, pose, data, playerChunk, radius, centerX, centerZ, centerY,
-                minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection, visibleFacesMask);
+                minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection,
+                reducedDetail, detailRadiusSq);
         renderChestChunkBatches(buf, pose, data, playerChunk, radius, centerX, centerZ, centerY,
-                minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection);
+                minBuildHeight, renderMinY, renderMaxY, isUnderground, cullDirection,
+                reducedDetail, detailRadiusSq);
     }
 
     private static void renderColorChunkBatches(BufferBuilder buf, Matrix4f pose,
@@ -1072,7 +1074,7 @@ public class VoxelMapRenderer {
                                                  double centerX, double centerZ, double centerY,
                                                  int minBuildHeight, int minY, int maxY,
                                                  boolean isUnderground, Direction cullDirection,
-                                                 int visibleFacesMask) {
+                                                 boolean reducedDetail, double detailRadiusSq) {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         boolean building = false;
         int batchedBlocks = 0;
@@ -1080,7 +1082,8 @@ public class VoxelMapRenderer {
         for (Map.Entry<ChunkPos, ChunkScanner.ScannedChunk> entry : data.entrySet()) {
             ChunkPos cp = entry.getKey();
             ChunkScanner.ScannedChunk chunkData = entry.getValue();
-            if (!isChunkVisible(cp, playerChunk, radius) || !chunkData.hasColorBlocks) continue;
+            if (!isChunkVisible(cp, playerChunk, radius)
+                    || (!chunkData.hasColorBlocks && !reducedDetail)) continue;
 
             int blockCount = chunkData.positions.length;
             if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
@@ -1094,7 +1097,8 @@ public class VoxelMapRenderer {
             }
 
             renderChunkBlocks(buf, pose, cp, chunkData, centerX, centerZ, centerY,
-                    minBuildHeight, minY, maxY, isUnderground, cullDirection, visibleFacesMask);
+                    minBuildHeight, minY, maxY, isUnderground, cullDirection,
+                    reducedDetail, detailRadiusSq);
             batchedBlocks += blockCount;
         }
 
@@ -1107,7 +1111,7 @@ public class VoxelMapRenderer {
                                                     double centerX, double centerZ, double centerY,
                                                     int minBuildHeight, int minY, int maxY,
                                                     boolean isUnderground, Direction cullDirection,
-                                                    int visibleFacesMask) {
+                                                    boolean reducedDetail, double detailRadiusSq) {
         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
         RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
         boolean building = false;
@@ -1130,7 +1134,8 @@ public class VoxelMapRenderer {
             }
 
             renderChunkBlocksTextured(buf, pose, cp, chunkData, centerX, centerZ, centerY,
-                    minBuildHeight, minY, maxY, isUnderground, cullDirection, visibleFacesMask);
+                    minBuildHeight, minY, maxY, isUnderground, cullDirection,
+                    reducedDetail, detailRadiusSq);
             batchedBlocks += blockCount;
         }
 
@@ -1142,7 +1147,8 @@ public class VoxelMapRenderer {
                                                  ChunkPos playerChunk, int radius,
                                                  double centerX, double centerZ, double centerY,
                                                  int minBuildHeight, int minY, int maxY,
-                                                 boolean isUnderground, Direction cullDirection) {
+                                                 boolean isUnderground, Direction cullDirection,
+                                                 boolean reducedDetail, double detailRadiusSq) {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         RenderSystem.disableCull();
         boolean building = false;
@@ -1165,7 +1171,8 @@ public class VoxelMapRenderer {
             }
 
             renderChunkChests(buf, pose, cp, chunkData, centerX, centerZ, centerY,
-                    minBuildHeight, minY, maxY, isUnderground, cullDirection);
+                    minBuildHeight, minY, maxY, isUnderground, cullDirection,
+                    reducedDetail, detailRadiusSq);
             batchedBlocks += blockCount;
         }
 
@@ -1177,11 +1184,27 @@ public class VoxelMapRenderer {
         return radius <= 0
                 || (Math.abs(pos.x - center.x) <= radius && Math.abs(pos.z - center.z) <= radius);
     }
+
+    private static boolean isNormallyColorRendered(int renderType) {
+        return renderType < ChunkScanner.RENDER_CHEST
+                || renderType == ChunkScanner.RENDER_RAIL
+                || renderType == ChunkScanner.RENDER_REPEATER
+                || renderType == ChunkScanner.RENDER_COMPARATOR
+                || renderType == ChunkScanner.RENDER_PISTON
+                || renderType == ChunkScanner.RENDER_CHAIN
+                || (renderType >= 41 && renderType <= ChunkScanner.RENDER_MOSS_CARPET);
+    }
     
-    private static void renderChunkBlocks(BufferBuilder buf, Matrix4f pose, ChunkPos cp, ChunkScanner.ScannedChunk chunkData, double centerX, double centerZ, double centerY, int minBuildHeight, int minY, int maxY, boolean isUnderground, Direction cullDirection, int visibleFacesMask) {
+    private static void renderChunkBlocks(BufferBuilder buf, Matrix4f pose, ChunkPos cp,
+                                          ChunkScanner.ScannedChunk chunkData,
+                                          double centerX, double centerZ, double centerY,
+                                          int minBuildHeight, int minY, int maxY,
+                                          boolean isUnderground, Direction cullDirection,
+                                          boolean reducedDetail, double detailRadiusSq) {
         int[] packedPositions = chunkData.positions;
         int[] colors = chunkData.colors;
         byte[] lights = chunkData.lights;
+        byte[] geometryFaces = chunkData.geometryFaces;
         
         if (packedPositions == null) return;
         
@@ -1194,25 +1217,7 @@ public class VoxelMapRenderer {
             int relY = (packed >> 8) & 0x1FF;
             int renderType = (packed >> 17) & 0x7F; // Expanded to 7 bits
             int exposedFaces = (packed >> 24) & 0x3F; // Shifted to 24
-            
-            // Apply Camera Culling Mask
-            // exposedFaces &= visibleFacesMask;
-            
-            if (renderType >= 32 && renderType != 61 && renderType != 62 && renderType != 63 && renderType != 64 && renderType != 65 && !(renderType >= 41 && renderType <= 57)) continue; // Skip textured blocks (handled in textured pass), but allow Rails/Repeater/Comparator/Piston/Chain/Carpets
-            
-            // If exposedFaces is 0, it might be old data OR a block with no exposed faces (fully buried).
-            // But fully buried blocks shouldn't be in the list?
-            // Actually, buried blocks are culled during scan.
-            // So if it's in the list, it MUST have some exposure.
-            // If exposedFaces is 0, it means it's old data format (where bits were 0).
-            // So we default to ALL exposed to be safe (and ugly grid) or just assume Top?
-            // Let's assume old data has Top exposed at least.
-            // BUT: We must exclude blocks that use exposedFaces for data packing where 0 is a valid value!
-            // 20: Button, 21: Lever, 61: Rail, 62: Repeater, 63: Comparator, 65: Chain
-            if (exposedFaces == 0 && renderType != 20 && renderType != 21 && renderType != 61 && renderType != 62 && renderType != 63 && renderType != 65) {
-                exposedFaces = 0x3F; 
-            }
-            
+
             int h = relY + minBuildHeight;
             
             if (h < minY || h > maxY) continue;
@@ -1222,6 +1227,25 @@ public class VoxelMapRenderer {
             double rx = (cp.x * 16 + x) + 0.5 - centerX;
             double ry = h - centerY;
             double rz = (cp.z * 16 + z) + 0.5 - centerZ;
+
+            boolean simplifiedBlock = reducedDetail && renderType != ChunkScanner.RENDER_BLOCK
+                    && rx * rx + rz * rz > detailRadiusSq;
+            if (!simplifiedBlock && !isNormallyColorRendered(renderType)) continue;
+
+            if (simplifiedBlock) {
+                exposedFaces = geometryFaces != null && i < geometryFaces.length
+                        ? geometryFaces[i] & 0x3F
+                        : exposedFaces;
+                if (exposedFaces == 0) continue;
+            } else if (renderType == ChunkScanner.RENDER_BLOCK) {
+                // Keep every exposed wall in the mesh. Camera-angle culling here made
+                // large structures look transparent when rotating the 3D map.
+                if (exposedFaces == 0) continue;
+            } else if (exposedFaces == 0 && renderType != 20 && renderType != 21
+                    && renderType != 61 && renderType != 62 && renderType != 63
+                    && renderType != 65) {
+                exposedFaces = 0x3F;
+            }
             
             // Sims 4 Style Culling (Wall Cutaway)
             if (isUnderground && cullDirection != null) {
@@ -1287,6 +1311,17 @@ public class VoxelMapRenderer {
                 float nightFactor = nightBase + (lightContrib * (1.0f - nightBase));
                 
                 brightness *= nightFactor;
+            }
+
+            if (simplifiedBlock) {
+                renderColorBox(buf, pose,
+                        (float)(rx - 0.5), (float)ry, (float)(rz - 0.5),
+                        (float)(rx + 0.5), (float)(ry + 1.0), (float)(rz + 0.5),
+                        (r * brightness) / 255.0f,
+                        (g * brightness) / 255.0f,
+                        (b * brightness) / 255.0f,
+                        alpha, exposedFaces);
+                continue;
             }
 
             // Offset for manual models to avoid z-fighting with ground
@@ -2736,7 +2771,34 @@ public class VoxelMapRenderer {
         }
     }
 
-    private static void renderEntities(PoseStack poseStack, Player player, int minY, int maxY, int radius, double cameraY) {
+    private static final class EntityIcon {
+        final double x;
+        final double y;
+        final double z;
+        final float size;
+        final int borderColor;
+        final float uMin;
+        final float uMax;
+        final float vMin;
+        final float vMax;
+
+        EntityIcon(double x, double y, double z, float size, int borderColor,
+                   float uMin, float uMax, float vMin, float vMax) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.size = size;
+            this.borderColor = borderColor;
+            this.uMin = uMin;
+            this.uMax = uMax;
+            this.vMin = vMin;
+            this.vMax = vMax;
+        }
+    }
+
+    private static void renderEntities(PoseStack poseStack, Player player, int minY, int maxY,
+                                       int radius, double cameraY, float cameraYaw,
+                                       float cameraPitch) {
         double centerX = player.getX();
         double centerZ = player.getZ();
         double centerY = cameraY;
@@ -2745,8 +2807,8 @@ public class VoxelMapRenderer {
         Iterable<Entity> entities = mc.level.entitiesForRendering();
         Map<ChunkPos, ChunkScanner.ScannedChunk> scannedData = ChunkScanner.getData();
         ChunkPos playerChunk = player.chunkPosition();
-        
-        MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
+
+        Map<ResourceLocation, List<EntityIcon>> iconsByTexture = new HashMap<>();
         
         for (Entity e : entities) {
             if (e == player) continue; 
@@ -2755,7 +2817,7 @@ public class VoxelMapRenderer {
             if (e.getY() < minY || e.getY() > maxY) continue;
             
             // Horizontal Culling
-            ChunkPos entityChunk = new ChunkPos(e.blockPosition());
+            ChunkPos entityChunk = e.chunkPosition();
             if (!scannedData.containsKey(entityChunk)) continue;
             
             if (radius > 0) {
@@ -2765,68 +2827,134 @@ public class VoxelMapRenderer {
             }
             
             // Check visibility settings
-            boolean visible = false;
-            
-            if (e instanceof Enemy) {
-                if (ClientSettings.showEnemies) visible = true;
-            } else if (e instanceof Villager) {
-                if (ClientSettings.showVillagers) visible = true;
-            } else if (e instanceof Animal || e instanceof Squid || e instanceof GlowSquid) {
-                if (ClientSettings.showAnimals) visible = true;
-            } else if (e instanceof Player) {
-                if (ClientSettings.showPlayers) visible = true;
-            } else if (e instanceof EndCrystal) {
-                visible = true;
-            }
-            
-            if (!visible) continue;
+            int borderColor = getEntityIconBorderColor(e);
+            if (borderColor == 0) continue;
             
             double rx = e.getX() - centerX;
-            double ry = e.getY() - centerY;
+            double ry = e.getY() - centerY + e.getBbHeight() + 0.15;
             double rz = e.getZ() - centerZ;
-            
-            poseStack.pushPose();
-            poseStack.translate(rx, ry, rz);
-            
-            // Render Entity
-            // Pass the interpolated yaw to the renderer so it handles rotation correctly
-            float partialTick = mc.getPartialTick();
-            float lerpYaw = net.minecraft.util.Mth.lerp(partialTick, e.yRotO, e.getYRot());
-            
+
             try {
-                // Render Spectral Border for Players
-                if (e instanceof Player) {
-                    float width = e.getBbWidth() + 0.1f;
-                    float height = e.getBbHeight() + 0.1f;
-                    
-                    Tesselator tess = Tesselator.getInstance();
-                    BufferBuilder buf = tess.getBuilder();
-                    
-                    // Spectral Effect: Standard Depth Test (Occluded by walls/roofs)
-                    // RenderSystem.disableDepthTest(); // Removed to prevent seeing through walls
-                    
-                    RenderSystem.setShader(GameRenderer::getPositionColorShader);
-                    // Use slightly different logic than marker to ensure it surrounds the model
-                    // Center X/Z, Bottom Y
-                    buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-                    // Cyan Spectral Box (0, 1, 1) - Offset Y by 0.02 to avoid Z-fighting with floor
-                    renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0.02f, 0, width, height, width, 0.0f, 1.0f, 1.0f, 1.0f);
-                    BufferUploader.drawWithShader(buf.end());
-                    
-                    // RenderSystem.enableDepthTest(); // Removed
+                EntityRenderer<? super Entity> renderer = mc.getEntityRenderDispatcher().getRenderer(e);
+                ResourceLocation texture = renderer.getTextureLocation(e);
+                if (texture == null) continue;
+
+                float size = net.minecraft.util.Mth.clamp(
+                        0.68f + e.getBbWidth() * 0.25f, 0.75f, 1.05f);
+                float uMin = 8.0f / 64.0f;
+                float uMax = 16.0f / 64.0f;
+                float textureHeight = uses64PixelEntityTexture(e) ? 64.0f : 32.0f;
+                float vMin = 8.0f / textureHeight;
+                float vMax = (e instanceof Villager ? 18.0f : 16.0f) / textureHeight;
+
+                if (e instanceof EndCrystal) {
+                    uMin = 0.0f;
+                    uMax = 1.0f;
+                    vMin = 0.0f;
+                    vMax = 1.0f;
                 }
 
-                // Use full bright light (15, 15) so they are visible on the map
-                mc.getEntityRenderDispatcher().render(e, 0, 0, 0, lerpYaw, partialTick, poseStack, bufferSource, LightTexture.pack(15, 15));
+                iconsByTexture.computeIfAbsent(texture, key -> new ArrayList<>())
+                        .add(new EntityIcon(rx, ry, rz, size, borderColor,
+                                uMin, uMax, vMin, vMax));
             } catch (Exception ex) {
-                // Ignore rendering errors
+                // A broken custom entity texture should not break the entire map.
             }
-            
-            poseStack.popPose();
         }
-        
-        // Flush buffers to ensure entities are drawn
-        bufferSource.endBatch();
+
+        if (iconsByTexture.isEmpty()) return;
+
+        BufferBuilder buf = Tesselator.getInstance().getBuilder();
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableCull();
+        RenderSystem.disableDepthTest();
+
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        for (List<EntityIcon> icons : iconsByTexture.values()) {
+            for (EntityIcon icon : icons) {
+                appendEntityIconBorder(buf, poseStack, icon, cameraYaw, cameraPitch);
+            }
+        }
+        BufferUploader.drawWithShader(buf.end());
+
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        for (Map.Entry<ResourceLocation, List<EntityIcon>> entry : iconsByTexture.entrySet()) {
+            RenderSystem.setShaderTexture(0, entry.getKey());
+            buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+            for (EntityIcon icon : entry.getValue()) {
+                appendEntityIconTexture(buf, poseStack, icon, cameraYaw, cameraPitch);
+            }
+            BufferUploader.drawWithShader(buf.end());
+        }
+
+        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+        RenderSystem.enableDepthTest();
+        RenderSystem.enableCull();
+    }
+
+    private static int getEntityIconBorderColor(Entity entity) {
+        if (entity instanceof Enemy) {
+            return ClientSettings.showEnemies ? 0xFFE24A4A : 0;
+        }
+        if (entity instanceof Villager) {
+            return ClientSettings.showVillagers ? 0xFFFFC857 : 0;
+        }
+        if (entity instanceof Animal || entity instanceof Squid || entity instanceof GlowSquid) {
+            return ClientSettings.showAnimals ? 0xFF63D471 : 0;
+        }
+        if (entity instanceof Player) {
+            return ClientSettings.showPlayers ? 0xFF45D8FF : 0;
+        }
+        if (entity instanceof EndCrystal) {
+            return 0xFFD86BFF;
+        }
+        return 0;
+    }
+
+    private static boolean uses64PixelEntityTexture(Entity entity) {
+        return entity instanceof AbstractClientPlayer
+                || entity instanceof Villager
+                || entity instanceof net.minecraft.world.entity.monster.Zombie;
+    }
+
+    private static void appendEntityIconBorder(BufferBuilder buf, PoseStack poseStack,
+                                               EntityIcon icon, float cameraYaw,
+                                               float cameraPitch) {
+        float alpha = ((icon.borderColor >> 24) & 0xFF) / 255.0f;
+        float red = ((icon.borderColor >> 16) & 0xFF) / 255.0f;
+        float green = ((icon.borderColor >> 8) & 0xFF) / 255.0f;
+        float blue = (icon.borderColor & 0xFF) / 255.0f;
+        float half = (icon.size + 0.10f) * 0.5f;
+
+        poseStack.pushPose();
+        poseStack.translate(icon.x, icon.y, icon.z);
+        poseStack.mulPose(Axis.YP.rotationDegrees(-cameraYaw));
+        poseStack.mulPose(Axis.XP.rotationDegrees(-cameraPitch));
+        Matrix4f pose = poseStack.last().pose();
+        buf.vertex(pose, -half, -half, 0.0f).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, -half, half, 0.0f).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, half, half, 0.0f).color(red, green, blue, alpha).endVertex();
+        buf.vertex(pose, half, -half, 0.0f).color(red, green, blue, alpha).endVertex();
+        poseStack.popPose();
+    }
+
+    private static void appendEntityIconTexture(BufferBuilder buf, PoseStack poseStack,
+                                                EntityIcon icon, float cameraYaw,
+                                                float cameraPitch) {
+        float half = icon.size * 0.5f;
+
+        poseStack.pushPose();
+        poseStack.translate(icon.x, icon.y, icon.z);
+        poseStack.mulPose(Axis.YP.rotationDegrees(-cameraYaw));
+        poseStack.mulPose(Axis.XP.rotationDegrees(-cameraPitch));
+        Matrix4f pose = poseStack.last().pose();
+        buf.vertex(pose, -half, -half, -0.01f).uv(icon.uMin, icon.vMax).endVertex();
+        buf.vertex(pose, -half, half, -0.01f).uv(icon.uMin, icon.vMin).endVertex();
+        buf.vertex(pose, half, half, -0.01f).uv(icon.uMax, icon.vMin).endVertex();
+        buf.vertex(pose, half, -half, -0.01f).uv(icon.uMax, icon.vMax).endVertex();
+        poseStack.popPose();
     }
 
     private static void renderBlockWithBorders(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float r, float g, float b, float a, int exposedFaces) {
@@ -3094,103 +3222,6 @@ public class VoxelMapRenderer {
         buf.vertex(pose, maxX, maxY, minZ).uv(uMax, vMin).endVertex();
     }
     
-    private static void renderEntityHeadIcon(PoseStack poseStack, Entity e, double x, double y, double z, int borderColor) {
-        // Get Entity Texture
-        Minecraft mc = Minecraft.getInstance();
-        EntityRenderer<? super Entity> renderer = mc.getEntityRenderDispatcher().getRenderer(e);
-        ResourceLocation texture = renderer.getTextureLocation(e);
-        
-        if (texture == null) return;
-        
-        // Calculate Size based on entity width (User requested "smaller for chicken")
-        float width = e.getBbWidth();
-        float size = Math.max(0.5f, width * 1.2f); // Minimum size 0.5, scaled slightly larger than hit box
-        
-        Tesselator tess = Tesselator.getInstance();
-        BufferBuilder buf = tess.getBuilder();
-        
-        // 1. Render Border (Colored Box below texture)
-        // Extract RGBA from borderColor
-        float bA = ((borderColor >> 24) & 0xFF) / 255.0f;
-        float bR = ((borderColor >> 16) & 0xFF) / 255.0f;
-        float bG = ((borderColor >> 8) & 0xFF) / 255.0f;
-        float bB = (borderColor & 0xFF) / 255.0f;
-        
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        
-        // Render flat quad on XZ plane, slightly larger than texture
-        float borderSize = size + 0.1f;
-        float yPos = (float)y + e.getBbHeight() + 0.5f; // Float above entity head
-        
-        // Center on XZ
-        float minX = (float)(x - borderSize/2);
-        float maxX = (float)(x + borderSize/2);
-        float minZ = (float)(z - borderSize/2);
-        float maxZ = (float)(z + borderSize/2);
-        
-        buf.vertex(poseStack.last().pose(), minX, yPos, minZ).color(bR, bG, bB, bA).endVertex();
-        buf.vertex(poseStack.last().pose(), minX, yPos, maxZ).color(bR, bG, bB, bA).endVertex();
-        buf.vertex(poseStack.last().pose(), maxX, yPos, maxZ).color(bR, bG, bB, bA).endVertex();
-        buf.vertex(poseStack.last().pose(), maxX, yPos, minZ).color(bR, bG, bB, bA).endVertex();
-        
-        BufferUploader.drawWithShader(buf.end());
-        
-        // 2. Render Textured Face Quad
-        RenderSystem.setShaderTexture(0, texture);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
-        
-        float texSize = size;
-        float texY = yPos + 0.01f; // Slightly above border
-        
-        float tMinX = (float)(x - texSize/2);
-        float tMaxX = (float)(x + texSize/2);
-        float tMinZ = (float)(z - texSize/2);
-        float tMaxZ = (float)(z + texSize/2);
-        
-        // UV Calculation (Standard Face: 8,8 to 16,16)
-        // Normalized for 64x64 texture (0.125 to 0.25)
-        // Most mobs share this layout for the head face.
-        // Villager head front is at different location, but let's try standard first.
-        
-        float uMin = 8.0f / 64.0f;
-        float uMax = 16.0f / 64.0f;
-        float vMin = 8.0f / 64.0f;
-        float vMax = 16.0f / 64.0f;
-        
-        // Villager check
-        if (e instanceof Villager) {
-             // Villager texture is 64x64.
-             // Head Front is 8x10.
-             // Start (0,0) -> Face at (8, 0)? No.
-             // Based on VillagerModel:
-             // head = new ModelPart(this, 0, 0);
-             // head.addBox(-4.0F, -10.0F, -4.0F, 8.0F, 10.0F, 8.0F);
-             // Standard box UVs:
-             // Front face starts at U = z(8) = 8.
-             // V starts at z(8) = 8.
-             // Size 8x10.
-             // So U: 8->16. V: 8->18.
-             uMin = 8.0f / 64.0f;
-             uMax = 16.0f / 64.0f;
-             vMin = 8.0f / 64.0f;
-             vMax = 18.0f / 64.0f;
-        }
-        
-        // Render Quad (Facing Up)
-        // Orientation: Top of texture (vMin) is North (-Z)?
-        // Usually on map: Up is North.
-        // So vMin should be at minZ.
-        
-        buf.vertex(poseStack.last().pose(), tMinX, texY, tMinZ).uv(uMin, vMin).endVertex(); // Top-Left (North-West)
-        buf.vertex(poseStack.last().pose(), tMinX, texY, tMaxZ).uv(uMin, vMax).endVertex(); // Bottom-Left (South-West)
-        buf.vertex(poseStack.last().pose(), tMaxX, texY, tMaxZ).uv(uMax, vMax).endVertex(); // Bottom-Right (South-East)
-        buf.vertex(poseStack.last().pose(), tMaxX, texY, tMinZ).uv(uMax, vMin).endVertex(); // Top-Right (North-East)
-        
-        BufferUploader.drawWithShader(buf.end());
-    }
-
     private static void renderInvertedColorBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, float red, float green, float blue, float alpha) {
         float minX = (float)(x - w/2);
         float maxX = (float)(x + w/2);
