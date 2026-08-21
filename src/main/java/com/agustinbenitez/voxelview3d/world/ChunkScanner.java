@@ -42,9 +42,8 @@ import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.level.block.state.properties.SlabType;
-import net.minecraft.world.level.block.state.properties.StairsShape;
 import net.minecraft.world.level.block.TrapDoorBlock;
-import net.minecraft.world.level.block.AbstractGlassBlock;
+import net.minecraft.world.level.block.TransparentBlock;
 import net.minecraft.world.level.block.EndRodBlock;
 import net.minecraft.world.level.block.BannerBlock;
 import net.minecraft.world.level.block.WallBannerBlock;
@@ -56,19 +55,14 @@ import net.minecraft.world.level.block.RepeaterBlock;
 import net.minecraft.world.level.block.ComparatorBlock;
 import net.minecraft.world.level.block.ChainBlock;
 import net.minecraft.world.level.block.state.properties.ComparatorMode;
-import net.minecraft.world.level.block.piston.PistonBaseBlock;
-import net.minecraft.world.level.block.piston.PistonHeadBlock;
-import net.minecraft.world.level.block.state.properties.PistonType;
 import net.minecraft.world.level.block.WoolCarpetBlock;
 import net.minecraft.world.level.block.BaseRailBlock;
 import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.item.DyeColor;
-import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.level.block.BlastFurnaceBlock;
 import net.minecraft.world.level.block.SmokerBlock;
-import net.minecraft.world.level.block.EnchantmentTableBlock;
+import net.minecraft.world.level.block.EnchantingTableBlock;
 import net.minecraft.world.level.block.PumpkinBlock;
-import net.minecraft.world.level.block.MelonBlock;
 import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
@@ -292,7 +286,7 @@ public class ChunkScanner {
                                     renderType = RENDER_BAMBOO;
                                 } else if (state.getBlock() instanceof FlowerPotBlock) {
                                     FlowerPotBlock pot = (FlowerPotBlock) state.getBlock();
-                                    if (pot.getContent() == Blocks.AIR) {
+                                    if (pot.getPotted() == Blocks.AIR) {
                                         renderType = RENDER_FLOWER_POT;
                                     } else {
                                         renderType = RENDER_POTTED_PLANT;
@@ -303,7 +297,7 @@ public class ChunkScanner {
                                     renderType = RENDER_TALL_FLOWER;
                                 } else if (state.getBlock() == Blocks.BROWN_MUSHROOM || state.getBlock() == Blocks.RED_MUSHROOM) {
                                     renderType = RENDER_MUSHROOM;
-                                } else if (state.getBlock() == Blocks.GRASS 
+                                } else if (state.getBlock() == Blocks.SHORT_GRASS
                                         || state.getBlock() == Blocks.TALL_GRASS 
                                         || state.getBlock() == Blocks.FERN 
                                         || state.getBlock() == Blocks.LARGE_FERN) {
@@ -582,7 +576,7 @@ public class ChunkScanner {
                                     
                                     // Pack Open: False(0), True(1)
                                     if (state.getValue(TrapDoorBlock.OPEN)) exposedFaces |= 8; // Bit 3
-                                } else if (state.getBlock() instanceof AbstractGlassBlock) {
+                                } else if (state.getBlock() instanceof TransparentBlock) {
                                     renderType = RENDER_GLASS_BLOCK;
                                     // exposedFaces is already calculated based on transparency
                                 } else if (state.getBlock() instanceof EndRodBlock) {
@@ -638,9 +632,9 @@ public class ChunkScanner {
                                     renderType = RENDER_TNT;
                                 } else if (state.getBlock() instanceof PumpkinBlock || state.getBlock() == Blocks.CARVED_PUMPKIN || state.getBlock() == Blocks.JACK_O_LANTERN) {
                                     renderType = RENDER_PUMPKIN;
-                                } else if (state.getBlock() instanceof MelonBlock) {
+                                } else if (state.getBlock() == Blocks.MELON) {
                                     renderType = RENDER_MELON;
-                                } else if (state.getBlock() instanceof EnchantmentTableBlock) {
+                                } else if (state.getBlock() instanceof EnchantingTableBlock) {
                                     renderType = RENDER_ENCHANTMENT_TABLE;
                                 } else if (state.getBlock() instanceof BarrelBlock) {
                                     renderType = RENDER_BARREL;
@@ -735,7 +729,7 @@ public class ChunkScanner {
                                 } else if (renderType == RENDER_POTTED_PLANT) {
                                     // Get color from the potted content
                                     FlowerPotBlock pot = (FlowerPotBlock) state.getBlock();
-                                    color = getPottedPlantColor(pot.getContent());
+                                    color = getPottedPlantColor(pot.getPotted());
                                 } else if (renderType == RENDER_FLOWER || renderType == RENDER_TALL_FLOWER || renderType == RENDER_MUSHROOM) {
                                     color = getPottedPlantColor(state.getBlock());
                                 } else if (renderType == RENDER_FIRE) {

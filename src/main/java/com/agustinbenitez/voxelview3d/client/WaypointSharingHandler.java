@@ -109,8 +109,10 @@ public class WaypointSharingHandler {
             }
                 
         } catch (Exception e) {
-            Minecraft.getInstance().player.displayClientMessage(
-                Component.literal("§cError adding waypoint"), false);
+            if (Minecraft.getInstance().player != null) {
+                Minecraft.getInstance().player.displayClientMessage(
+                    Component.literal("Error adding waypoint").withStyle(net.minecraft.ChatFormatting.RED), false);
+            }
         }
     }
 }
