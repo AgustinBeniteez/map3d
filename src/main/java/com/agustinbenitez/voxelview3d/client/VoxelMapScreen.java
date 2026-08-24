@@ -51,6 +51,8 @@ public class VoxelMapScreen extends Screen {
     private BlockPos selectedMapBlock;
     private int blockMenuX;
     private int blockMenuY;
+    private boolean previousHideGui;
+    private boolean hideGuiCaptured;
     
     private EditBox waypointNameField;
     private EditBox wpX, wpY, wpZ;
@@ -121,6 +123,17 @@ public class VoxelMapScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+
+        // Minecraft 1.21.8 submits the vanilla HUD after this screen's immediate
+        // map pass. Hide it while the full map is open so the hotbar and slots
+        // cannot be drawn over the map, then restore the user's F1 preference.
+        if (!hideGuiCaptured && this.minecraft != null) {
+            previousHideGui = this.minecraft.options.hideGui;
+            hideGuiCaptured = true;
+        }
+        if (this.minecraft != null) {
+            this.minecraft.options.hideGui = true;
+        }
         
         int buttonY = this.height - 25;
         int btnWidth = 20; // Icons are small
@@ -1248,11 +1261,6 @@ public class VoxelMapScreen extends Screen {
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // The map supplies its own background. Minecraft 1.21 blurs the current
-        // framebuffer in Screen#renderBackground, so calling it again from
-        // super.render() would blur the map and modal contents drawn below.
-        this.renderTransparentBackground(guiGraphics);
-        
         PoseStack mapPoseStack = new PoseStack();
         mapPoseStack.pushPose();
         
@@ -1267,6 +1275,10 @@ public class VoxelMapScreen extends Screen {
             RenderBufferUtil.clearDepth();
             VoxelMapRenderer.renderMap(mapPoseStack, zoom, pitch, cameraYaw, false,
                     ClientSettings.renderDistance, selectedMapBlock);
+            // The map is rendered immediately, while the 1.21.8 GUI is submitted
+            // afterwards. Remove the map's depth values so deferred buttons,
+            // panels and text always render over it.
+            RenderBufferUtil.clearDepth();
             RenderBufferUtil.setScreenSpace(false);
         }
 
@@ -1417,7 +1429,17 @@ public class VoxelMapScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // Intentionally empty: render() draws the dim layer once before the map.
+        // The map is the background. A deferred translucent screen background
+        // would be submitted over the immediate map and make its colors gray.
+    }
+
+    @Override
+    public void removed() {
+        if (hideGuiCaptured && this.minecraft != null) {
+            this.minecraft.options.hideGui = previousHideGui;
+            hideGuiCaptured = false;
+        }
+        super.removed();
     }
     
     private void renderCompass(GuiGraphics guiGraphics, int width, int height) {

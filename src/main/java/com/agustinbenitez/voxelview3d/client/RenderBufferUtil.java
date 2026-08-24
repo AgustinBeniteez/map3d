@@ -16,6 +16,7 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.CachedOrthoProjectionMatrixBuffer;
 import net.minecraft.client.renderer.MappableRingBuffer;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.TextureAtlas;
@@ -35,6 +36,8 @@ final class RenderBufferUtil {
     private static final ByteBufferBuilder SORT_ALLOCATOR = new ByteBufferBuilder(RenderType.SMALL_BUFFER_SIZE);
     private static final Map<PipelineKey, RenderPipeline> PIPELINES = new HashMap<>();
     private static final Map<PipelineKey, MappableRingBuffer> VERTEX_BUFFERS = new HashMap<>();
+    private static final CachedOrthoProjectionMatrixBuffer SCREEN_PROJECTION =
+            new CachedOrthoProjectionMatrixBuffer("voxelview3d map", 1000.0f, 11000.0f, true);
 
     private static ResourceLocation texture = TextureAtlas.LOCATION_BLOCKS;
     private static boolean depthTest = true;
@@ -137,6 +140,11 @@ final class RenderBufferUtil {
         GpuBufferSlice transforms = RenderSystem.getDynamicUniforms().writeTransform(
                 modelView, COLOR_MODULATOR, RenderSystem.getModelOffset(),
                 RenderSystem.getTextureMatrix(), 1.0f);
+        GpuBufferSlice projection = screenSpace
+                ? SCREEN_PROJECTION.getBuffer(
+                        minecraft.getWindow().getGuiScaledWidth(),
+                        minecraft.getWindow().getGuiScaledHeight())
+                : null;
 
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> "voxelview3d immediate map",
@@ -144,6 +152,9 @@ final class RenderBufferUtil {
                 minecraft.getMainRenderTarget().getDepthTextureView(), OptionalDouble.empty())) {
             pass.setPipeline(pipeline);
             RenderSystem.bindDefaultUniforms(pass);
+            if (screenSpace) {
+                pass.setUniform("Projection", projection);
+            }
             pass.setUniform("DynamicTransforms", transforms);
             if (textured) {
                 pass.bindSampler("Sampler0", textureView);

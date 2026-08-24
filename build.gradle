@@ -21,10 +21,6 @@ loom {
             client()
             name = 'Fabric Client'
             runDir = 'run'
-            programArgs '--quickPlaySingleplayer', 'New World (5)'
-            if (project.hasProperty('voxelviewAutotest')) {
-                vmArgs '-Dvoxelview3d.autotest=true'
-            }
         }
     }
 }
