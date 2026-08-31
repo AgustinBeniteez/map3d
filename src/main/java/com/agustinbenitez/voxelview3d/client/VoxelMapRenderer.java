@@ -67,6 +67,7 @@ public class VoxelMapRenderer {
     private static ChunkPos lastPickCenterChunk;
     private static boolean lastPickReducedDetail;
     private static double lastPickDetailRadiusSq;
+    private static int lastPickScreenScale = 1;
 
     public static void renderMap(PoseStack poseStack, float zoom, float cameraPitch, float cameraYaw,
                                  boolean isHud, int renderRadius, BlockPos selectedBlock) {
@@ -136,24 +137,10 @@ public class VoxelMapRenderer {
                 isUnderground = !canSeeSky && !isNether; // Overworld logic
             }
             
-            if (!isUnderground && !isNether && !isEnd) {
-                 int x = player.getBlockX();
-                 int z = player.getBlockZ();
-                 
-                 // Check surrounding height (3x3 area around player)
-                 // If average surrounding height is significantly higher than effectiveY, we are in a hole/trench
-                 int h1 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x + 2, z);
-                 int h2 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x - 2, z);
-                 int h3 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z + 2);
-                 int h4 = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z - 2);
-                 
-                 int avgSurrounding = (h1 + h2 + h3 + h4) / 4;
-                 
-                 // If player is > 3 blocks below the surrounding terrain, treat as underground (transparency)
-                 if (effectiveY < avgSurrounding - 3) {
-                    isUnderground = true;
-                }
-            }
+            // An open quarry or trench still has direct sky access and must use
+            // surface mode. The former surrounding-height heuristic incorrectly
+            // enabled cave mode there, capping the map at the player's Y and
+            // slicing trees and buildings at that same level.
             
             if (isUnderground) {
                 // Cave Mode: Strict vertical limits to see player inside
@@ -972,15 +959,15 @@ public class VoxelMapRenderer {
                 
                 // We need a new buffer for the icon
                 BufferBuilder bufIcon;
-                bufIcon = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+                bufIcon = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
                 Matrix4f matrix = poseStack.last().pose();
                 
-                bufIcon.addVertex(matrix, -iconSize/2, iconY - iconSize, 0).setUv(0, 0);
-                bufIcon.addVertex(matrix, -iconSize/2, iconY, 0).setUv(0, 1);
-                bufIcon.addVertex(matrix, iconSize/2, iconY, 0).setUv(1, 1);
-                bufIcon.addVertex(matrix, iconSize/2, iconY - iconSize, 0).setUv(1, 0);
+                bufIcon.addVertex(matrix, -iconSize/2, iconY - iconSize, 0).setUv(0, 0).setColor(r, g, b, 1.0f);
+                bufIcon.addVertex(matrix, -iconSize/2, iconY, 0).setUv(0, 1).setColor(r, g, b, 1.0f);
+                bufIcon.addVertex(matrix, iconSize/2, iconY, 0).setUv(1, 1).setColor(r, g, b, 1.0f);
+                bufIcon.addVertex(matrix, iconSize/2, iconY - iconSize, 0).setUv(1, 0).setColor(r, g, b, 1.0f);
                 
-                RenderBufferUtil.drawIfNotEmpty(bufIcon);
+                RenderBufferUtil.drawTexturedColorSeeThrough(bufIcon, iconLoc);
                 
                 // Reset Shader Color
                 // setShaderColor
@@ -1038,14 +1025,14 @@ public class VoxelMapRenderer {
         buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         // Cyan: R=0, G=1, B=1. 
         renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, borderSize, 0.0f, 1.0f, 1.0f, 1.0f); // Cyan
-        RenderBufferUtil.drawIfNotEmpty(buf);
+        RenderBufferUtil.drawColorSeeThrough(buf);
         
         // 2. Render Textured Head
         // setShaderTexture
         // setShader
         buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
         renderTexturedHead(buf, poseStack.last().pose(), 0, 0, 0, headSize);
-        RenderBufferUtil.drawIfNotEmpty(buf);
+        RenderBufferUtil.drawTexturedSeeThrough(buf, skin);
         
         poseStack.popPose();
         
@@ -1064,6 +1051,7 @@ public class VoxelMapRenderer {
         lastPickMaxY = maxY;
         lastPickRadius = radius;
         lastPickCenterChunk = player.chunkPosition();
+        lastPickScreenScale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
         lastPickReducedDetail = false;
         lastPickDetailRadiusSq = 0.0;
         hasPickState = true;
@@ -1074,7 +1062,8 @@ public class VoxelMapRenderer {
 
         Matrix4f inverse = new Matrix4f(LAST_PICK_POSE).invert();
         Vector3f rayOrigin = inverse.transformPosition(
-                new Vector3f((float)screenX, (float)screenY, 0.0f));
+                new Vector3f((float)(screenX * lastPickScreenScale),
+                        (float)(screenY * lastPickScreenScale), 0.0f));
         Vector3f rayDirection = inverse.transformDirection(new Vector3f(0.0f, 0.0f, 1.0f));
         if (!rayOrigin.isFinite() || !rayDirection.isFinite()
                 || rayDirection.lengthSquared() < 1.0e-10f) return null;
@@ -1308,7 +1297,7 @@ public class VoxelMapRenderer {
 
             int blockCount = chunkData.positions.length;
             if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
-                RenderBufferUtil.drawIfNotEmpty(buf);
+                RenderBufferUtil.drawTexturedColor(buf, TextureAtlas.LOCATION_BLOCKS);
                 building = false;
                 batchedBlocks = 0;
             }
@@ -1323,7 +1312,7 @@ public class VoxelMapRenderer {
             batchedBlocks += blockCount;
         }
 
-        if (building) RenderBufferUtil.drawIfNotEmpty(buf);
+        if (building) RenderBufferUtil.drawTexturedColor(buf, TextureAtlas.LOCATION_BLOCKS);
     }
 
     private static void renderChestChunkBatches(Matrix4f pose,
@@ -1345,7 +1334,7 @@ public class VoxelMapRenderer {
 
             int blockCount = chunkData.positions.length;
             if (building && batchedBlocks + blockCount > MAX_BLOCKS_PER_BATCH) {
-                RenderBufferUtil.drawIfNotEmpty(buf);
+                RenderBufferUtil.drawColorNoCull(buf);
                 building = false;
                 batchedBlocks = 0;
             }
@@ -1360,7 +1349,7 @@ public class VoxelMapRenderer {
             batchedBlocks += blockCount;
         }
 
-        if (building) RenderBufferUtil.drawIfNotEmpty(buf);
+        if (building) RenderBufferUtil.drawColorNoCull(buf);
         // enableCull
     }
 
@@ -3114,7 +3103,7 @@ public class VoxelMapRenderer {
                 appendEntityIconBorder(buf, poseStack, icon, cameraYaw, cameraPitch);
             }
         }
-        RenderBufferUtil.drawIfNotEmpty(buf);
+        RenderBufferUtil.drawColorSeeThrough(buf);
 
         // setShader
         for (Map.Entry<Identifier, List<EntityIcon>> entry : iconsByTexture.entrySet()) {
@@ -3123,7 +3112,7 @@ public class VoxelMapRenderer {
             for (EntityIcon icon : entry.getValue()) {
                 appendEntityIconTexture(buf, poseStack, icon, cameraYaw, cameraPitch);
             }
-            RenderBufferUtil.drawIfNotEmpty(buf);
+            RenderBufferUtil.drawTexturedSeeThrough(buf, entry.getKey());
         }
 
         // setShaderColor
@@ -3548,7 +3537,7 @@ public class VoxelMapRenderer {
         appendOutlineLine(buf, pose, x1, y0, z1, x1, y1, z1);
         appendOutlineLine(buf, pose, x0, y0, z1, x0, y1, z1);
 
-        RenderBufferUtil.drawIfNotEmpty(buf);
+        RenderBufferUtil.drawLines(buf);
         // lineWidth
         // depthMask
         // enableDepthTest
@@ -3615,7 +3604,7 @@ public class VoxelMapRenderer {
              buf.addVertex(pose, (float)rxMax, 0, (float)rz).setColor(r, g, b, a);
         }
         
-        RenderBufferUtil.drawIfNotEmpty(buf);
+        RenderBufferUtil.drawLines(buf);
         // lineWidth
     }
 }

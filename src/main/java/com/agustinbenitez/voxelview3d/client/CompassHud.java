@@ -4,6 +4,8 @@ import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -16,6 +18,7 @@ import net.minecraft.world.entity.player.Player;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import org.joml.Vector4f;
 
 public final class CompassHud {
 
@@ -28,11 +31,12 @@ public final class CompassHud {
     private static final double MAX_ENTITY_DISTANCE = 50.0; // Blocks
 
     public static void render(GuiGraphicsExtractor guiGraphics, DeltaTracker deltaTracker) {
-        if (!ClientSettings.showCompass) return;
-
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
         if (mc.options.hideGui) return;
+
+        renderWorldWaypointLabels(guiGraphics, mc);
+        if (!ClientSettings.showCompass) return;
 
         Player player = mc.player;
         float playerYaw = Mth.wrapDegrees(player.getYRot());
@@ -178,7 +182,96 @@ public final class CompassHud {
         int y = topY + 1;
         Identifier iconLoc = Identifier.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
         int iconSize = isStacked ? 7 : 10;
-        guiGraphics.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, iconLoc, x - iconSize/2, y, iconSize, iconSize);
+        // Waypoint icons are standalone PNGs. blitSprite() looks them up in the
+        // GUI sprite atlas and produced the magenta/black missing-sprite marker.
+        guiGraphics.blit(RenderPipelines.GUI_TEXTURED, iconLoc, x - iconSize / 2, y,
+                0, 0, iconSize, iconSize, 16, 16);
+    }
+
+    /**
+     * World labels are extracted as normal GUI elements in 26.1. Rendering Font
+     * buffers directly from the late level frame pass is no longer reliable.
+     */
+    private static void renderWorldWaypointLabels(GuiGraphicsExtractor graphics, Minecraft mc) {
+        CameraRenderState camera = mc.gameRenderer.getGameRenderState().levelRenderState.cameraRenderState;
+        if (!camera.initialized) return;
+
+        int screenWidth = mc.getWindow().getGuiScaledWidth();
+        int screenHeight = mc.getWindow().getGuiScaledHeight();
+        List<ProjectedWaypoint> projectedWaypoints = new ArrayList<>();
+
+        for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
+            if (!wp.visible || !wp.getDimension().equals(mc.level.dimension().identifier().toString())) continue;
+
+            double worldX = wp.x + 0.5;
+            double worldY = wp.y + 2.5;
+            double worldZ = wp.z + 0.5;
+
+            Vector4f projected = new Vector4f(
+                    (float)(worldX - camera.pos.x),
+                    (float)(worldY - camera.pos.y),
+                    (float)(worldZ - camera.pos.z),
+                    1.0f);
+            camera.viewRotationMatrix.transform(projected);
+            camera.projectionMatrix.transform(projected);
+
+            if (projected.w <= 0.001f) continue;
+
+            float ndcX = projected.x / projected.w;
+            float ndcY = projected.y / projected.w;
+            if (ndcX < -1.05f || ndcX > 1.05f || ndcY < -1.05f || ndcY > 1.05f) continue;
+
+            int screenX = Math.round((ndcX * 0.5f + 0.5f) * screenWidth);
+            int screenY = Math.round((0.5f - ndcY * 0.5f) * screenHeight);
+            double dx = worldX - camera.pos.x;
+            double dy = wp.y - camera.pos.y;
+            double dz = worldZ - camera.pos.z;
+            double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            projectedWaypoints.add(new ProjectedWaypoint(wp, screenX, screenY, distance));
+        }
+
+        // Draw distant labels first. A nearby waypoint remains readable when two
+        // projected positions overlap.
+        projectedWaypoints.sort(Comparator.comparingDouble((ProjectedWaypoint p) -> p.distance).reversed());
+        for (ProjectedWaypoint projected : projectedWaypoints) {
+            drawWorldWaypointLabel(graphics, mc, projected);
+        }
+    }
+
+    private static void drawWorldWaypointLabel(GuiGraphicsExtractor graphics, Minecraft mc, ProjectedWaypoint projected) {
+        ClientSettings.Waypoint wp = projected.waypoint;
+        Identifier icon = Identifier.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+        String distanceText = String.format("%.0fm", projected.distance);
+
+        int iconSize = 16;
+        int iconY = projected.y - 29;
+        int nameY = projected.y - 11;
+        int distanceY = projected.y;
+        int nameWidth = mc.font.width(wp.name);
+        int distanceWidth = mc.font.width(distanceText);
+
+        graphics.fill(projected.x - nameWidth / 2 - 2, nameY - 1,
+                projected.x + (nameWidth + 1) / 2 + 2, nameY + 9, 0x70000000);
+        graphics.fill(projected.x - distanceWidth / 2 - 2, distanceY - 1,
+                projected.x + (distanceWidth + 1) / 2 + 2, distanceY + 9, 0x70000000);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, icon, projected.x - iconSize / 2, iconY,
+                0, 0, iconSize, iconSize, 16, 16);
+        graphics.text(mc.font, wp.name, projected.x - nameWidth / 2, nameY, 0xFFFFFFFF, true);
+        graphics.text(mc.font, distanceText, projected.x - distanceWidth / 2, distanceY, 0xFFAAAAAA, true);
+    }
+
+    private static final class ProjectedWaypoint {
+        private final ClientSettings.Waypoint waypoint;
+        private final int x;
+        private final int y;
+        private final double distance;
+
+        private ProjectedWaypoint(ClientSettings.Waypoint waypoint, int x, int y, double distance) {
+            this.waypoint = waypoint;
+            this.x = x;
+            this.y = y;
+            this.distance = distance;
+        }
     }
     
     private static class VisibleWaypoint {

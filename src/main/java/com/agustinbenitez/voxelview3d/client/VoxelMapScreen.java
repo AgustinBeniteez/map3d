@@ -1265,19 +1265,25 @@ public class VoxelMapScreen extends Screen {
         // super.render() would blur the map and modal contents drawn below.
         this.extractTransparentBackground(graphics);
         
-        PoseStack poseStack = new PoseStack();
-        poseStack.pushPose();
-        // Center on screen
-        poseStack.translate(this.width / 2.0 + panX, this.height / 2.0 + panY, 0);
-        
-        // Use shared renderer
+        // 3D content must be extracted as a PIP state in 26.1. Immediate draws
+        // performed here run before GuiRenderer binds its projection/targets.
         if (!showWaypointModal && !showSettingsModal) {
             float pitch = ClientSettings.isTopDownView ? 90.0f : cameraPitch;
-            VoxelMapRenderer.renderMap(poseStack, zoom, pitch, cameraYaw, false,
-                    ClientSettings.renderDistance, selectedMapBlock);
+            graphics.getRenderState().addPicturesInPictureState(new VoxelMapRenderState(
+                    zoom,
+                    pitch,
+                    cameraYaw,
+                    panX,
+                    panY,
+                    ClientSettings.renderDistance,
+                    selectedMapBlock,
+                    0,
+                    0,
+                    this.width,
+                    this.height,
+                    null
+            ));
         }
-        
-        poseStack.popPose();
         
         // Start UI Layer (Higher Z-index to sit above the map)
         float scale = getHudScale();
@@ -1465,7 +1471,7 @@ public class VoxelMapScreen extends Screen {
         buf.addVertex(pose, 0, 0, 0).setColor(200, 200, 200, 255);
         buf.addVertex(pose, -len, 0, 0).setColor(50, 50, 150, 255);
 
-        RenderBufferUtil.drawIfNotEmpty(buf);
+        RenderBufferUtil.drawLines(buf);
         // lineWidth // Reset line width
         
         poseStack.popPose();

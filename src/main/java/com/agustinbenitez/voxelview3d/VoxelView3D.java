@@ -6,6 +6,7 @@ import com.mojang.logging.LogUtils;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.AddGuiOverlayLayersEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
+import net.minecraftforge.client.event.RegisterPictureInPictureRendererEvent;
 import net.minecraftforge.client.gui.overlay.ForgeLayeredDraw;
 import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -23,6 +24,7 @@ public class VoxelView3D {
         if (FMLEnvironment.dist == Dist.CLIENT) {
             RegisterKeyMappingsEvent.BUS.addListener(this::registerKeys);
             AddGuiOverlayLayersEvent.BUS.addListener(this::registerOverlays);
+            RegisterPictureInPictureRendererEvent.BUS.addListener(this::registerPictureInPictureRenderers);
 
             // Register client tick & event handlers
             InputHandler.registerEvents();
@@ -44,6 +46,10 @@ public class VoxelView3D {
                 ForgeLayeredDraw.POST_SLEEP_STACK,
                 net.minecraft.resources.Identifier.fromNamespaceAndPath(MODID, "compass_hud"),
                 CompassHud::render);
+    }
+
+    private void registerPictureInPictureRenderers(RegisterPictureInPictureRendererEvent event) {
+        event.register(new VoxelMapPictureInPictureRenderer(event.getBufferSource()));
     }
 
     @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
