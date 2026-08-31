@@ -134,7 +134,16 @@ public class VoxelMapRenderer {
                 int h = mc.level.getHeight(Heightmap.Types.MOTION_BLOCKING, player.getBlockX(), player.getBlockZ());
                 isUnderground = h > effectiveY + 4;
             } else {
-                isUnderground = !canSeeSky && !isNether; // Overworld logic
+                // Leaves and small roofs also make canSeeSky() false. They must
+                // not turn the whole map into a horizontal slice at the player's
+                // Y. Require a real amount of solid terrain above the selected
+                // layer before enabling cave mode; the no-leaves heightmap keeps
+                // forests in normal surface mode.
+                int solidSurfaceY = mc.level.getHeight(
+                        Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                        player.getBlockX(), player.getBlockZ());
+                boolean hasTerrainAbove = solidSurfaceY > effectiveY + 5;
+                isUnderground = !canSeeSky && hasTerrainAbove && !isNether;
             }
             
             // An open quarry or trench still has direct sky access and must use
@@ -219,7 +228,7 @@ public class VoxelMapRenderer {
                 renderMaxY = mc.level.getMaxY();
             }
         }
-        
+
         // Update Global State for UI
         isUndergroundState = isUnderground;
         cachePickState(poseStack.last().pose(), player, cameraY, minBuildHeight,

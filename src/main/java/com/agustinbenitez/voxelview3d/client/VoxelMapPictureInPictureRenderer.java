@@ -16,6 +16,10 @@ public final class VoxelMapPictureInPictureRenderer extends PictureInPictureRend
 
     @Override
     protected void renderToTexture(VoxelMapRenderState state, PoseStack poseStack) {
+        // The vanilla PIP base flips Z for entity previews. This renderer has
+        // its own map camera, so cancel that inherited flip or lower terrain
+        // wins the depth test over trees, buildings and mountains above it.
+        poseStack.scale(1.0F, 1.0F, -1.0F);
         poseStack.translate(state.panX(), state.panY(), 0.0);
         VoxelMapRenderer.renderMap(
                 poseStack,
