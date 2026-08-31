@@ -1119,7 +1119,9 @@ public class VoxelMapScreen extends Screen {
             }
             return true;
         }
-        return super.mouseReleased(event);
+        MouseButtonEvent scaledEvent = new MouseButtonEvent(
+                mouseX / scale, mouseY / scale, event.buttonInfo());
+        return super.mouseReleased(scaledEvent);
     }
 
     private float getHudScale() {
@@ -1747,7 +1749,11 @@ public class VoxelMapScreen extends Screen {
         double mouseY = event.y();
         int button = event.button();
         float scale = getHudScale();
-        if (super.mouseDragged(event, dragX / scale, dragY / scale)) return true;
+        // Widgets are positioned before the HUD pose is scaled. Forward both
+        // the pointer and its delta in that same logical coordinate space.
+        MouseButtonEvent scaledEvent = new MouseButtonEvent(
+                mouseX / scale, mouseY / scale, event.buttonInfo());
+        if (super.mouseDragged(scaledEvent, dragX / scale, dragY / scale)) return true;
         
         if (isDraggingMap) {
             if (!mapDragMoved
