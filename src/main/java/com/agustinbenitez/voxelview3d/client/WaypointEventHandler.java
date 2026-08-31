@@ -6,19 +6,23 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
-@Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
+
 public class WaypointEventHandler {
+    public static void registerEvents() {
+        net.minecraftforge.event.TickEvent.ClientTickEvent.Post.BUS.addListener(WaypointEventHandler::onClientTick);
+    }
+
 
     private static boolean wasDead = false;
 
-    @SubscribeEvent
+    
     public static void onPlayerLogOut(ClientPlayerNetworkEvent.LoggingOut event) {
         WaypointManager.saveWaypoints();
         // Clear waypoints on logout to avoid mixing servers
@@ -26,7 +30,7 @@ public class WaypointEventHandler {
         wasDead = false;
     }
     
-    @SubscribeEvent
+    
     public static void onPlayerLogIn(ClientPlayerNetworkEvent.LoggingIn event) {
         // Clear previous waypoints before loading new ones
         ClientSettings.waypoints.clear();
@@ -38,7 +42,7 @@ public class WaypointEventHandler {
         com.agustinbenitez.voxelview3d.world.WorldHandler.reset();
     }
 
-    @SubscribeEvent
+    
     public static void onScreenOpen(ScreenEvent.Opening event) {
         if (!ClientSettings.autoDeathPoints) return;
         
@@ -49,7 +53,7 @@ public class WaypointEventHandler {
                 int x = mc.player.getBlockX();
                 int y = mc.player.getBlockY();
                 int z = mc.player.getBlockZ();
-                String dimension = mc.player.level().dimension().location().toString();
+                String dimension = mc.player.level().dimension().identifier().toString();
                 
                 String lastDeathName = Component.translatable("voxelview3d.waypoint.last_death").getString();
                 
@@ -76,20 +80,18 @@ public class WaypointEventHandler {
                     ClientSettings.waypoints.add(new ClientSettings.Waypoint(lastDeathName, x, y, z, 0x555555, "dead", dimension)); 
                     WaypointManager.saveWaypoints();
                     
-                    mc.player.displayClientMessage(Component.translatable("voxelview3d.waypoint.death_created", x, y, z), false);
+                    mc.player.sendSystemMessage(Component.translatable("voxelview3d.waypoint.death_created", x, y, z));
                 }
             }
         }
     }
 
-    @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) {
-            Minecraft mc = Minecraft.getInstance();
-            // Reset wasDead flag when player respawns (is alive and no longer in DeathScreen)
-            if (wasDead && mc.player != null && mc.player.isAlive() && !(mc.screen instanceof DeathScreen)) {
-                wasDead = false;
-            }
+    
+    public static void onClientTick(TickEvent.ClientTickEvent.Post event) {
+        Minecraft mc = Minecraft.getInstance();
+        // Reset wasDead flag when player respawns (is alive and no longer in DeathScreen)
+        if (wasDead && mc.player != null && mc.player.isAlive() && !(mc.screen instanceof DeathScreen)) {
+            wasDead = false;
         }
     }
 }

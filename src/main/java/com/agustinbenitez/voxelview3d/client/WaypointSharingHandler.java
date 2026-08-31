@@ -13,7 +13,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientChatEvent;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.client.event.RegisterClientCommandsEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 import java.nio.charset.StandardCharsets;
@@ -21,8 +21,14 @@ import java.util.Base64;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-@Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
+
 public class WaypointSharingHandler {
+    public static void registerEvents() {
+        net.minecraftforge.client.event.RegisterClientCommandsEvent.BUS.addListener(WaypointSharingHandler::onRegisterClientCommands);
+        net.minecraftforge.client.event.ClientChatEvent.BUS.addListener(WaypointSharingHandler::onClientChat);
+        net.minecraftforge.client.event.ClientChatReceivedEvent.BUS.addListener(WaypointSharingHandler::onChatReceived);
+    }
+
     private static final Gson GSON = new Gson();
     private static final String PREFIX = "[VV3D-WP:";
     private static final String SUFFIX = "]";
@@ -34,7 +40,7 @@ public class WaypointSharingHandler {
         return PREFIX + encoded + SUFFIX;
     }
 
-    @SubscribeEvent
+    
     public static void onRegisterClientCommands(RegisterClientCommandsEvent event) {
         event.getDispatcher().register(
             Commands.literal("vv3d_add_wp")
@@ -48,11 +54,11 @@ public class WaypointSharingHandler {
         );
     }
 
-    @SubscribeEvent
+    
     public static void onClientChat(ClientChatEvent event) {
         String msg = event.getMessage();
         if (msg.startsWith("/vv3d_add_wp ")) {
-            event.setCanceled(true);
+            event.setMessage("");
             String encoded = msg.substring(13);
             addWaypointFromShare(encoded);
             // Optionally add to history so user can recall it if needed
@@ -60,7 +66,7 @@ public class WaypointSharingHandler {
         }
     }
 
-    @SubscribeEvent
+    
     public static void onChatReceived(ClientChatReceivedEvent event) {
         String msg = event.getMessage().getString();
         Matcher matcher = PATTERN.matcher(msg);
@@ -74,8 +80,8 @@ public class WaypointSharingHandler {
                     .setStyle(Style.EMPTY
                         .withColor(wp.color)
                         .withUnderlined(true)
-                        .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/vv3d_add_wp " + encoded))
-                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.translatable("voxelview3d.chat.share_hover")))
+                        .withClickEvent(new ClickEvent.SuggestCommand("/vv3d_add_wp " + encoded))
+                        .withHoverEvent(new HoverEvent.ShowText(Component.translatable("voxelview3d.chat.share_hover")))
                     );
                 
                 // Replace the tag in the message with the clickable component
@@ -101,17 +107,17 @@ public class WaypointSharingHandler {
             if (!exists) {
                 ClientSettings.waypoints.add(wp);
                 WaypointManager.saveWaypoints();
-                Minecraft.getInstance().player.displayClientMessage(
-                    Component.translatable("voxelview3d.chat.waypoint_added", wp.name), false);
+                Minecraft.getInstance().player.sendSystemMessage(
+                    Component.translatable("voxelview3d.chat.waypoint_added", wp.name));
             } else {
-                 Minecraft.getInstance().player.displayClientMessage(
-                    Component.translatable("voxelview3d.chat.waypoint_exists", wp.name), false);
+                 Minecraft.getInstance().player.sendSystemMessage(
+                    Component.translatable("voxelview3d.chat.waypoint_exists", wp.name));
             }
                 
         } catch (Exception e) {
             if (Minecraft.getInstance().player != null) {
-                Minecraft.getInstance().player.displayClientMessage(
-                    Component.literal("Error adding waypoint").withStyle(net.minecraft.ChatFormatting.RED), false);
+                Minecraft.getInstance().player.sendSystemMessage(
+                    Component.literal("Error adding waypoint").withStyle(net.minecraft.ChatFormatting.RED));
             }
         }
     }

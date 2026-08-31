@@ -6,7 +6,7 @@ import net.minecraftforge.client.settings.KeyConflictContext;
 import org.lwjgl.glfw.GLFW;
 
 public class KeyBindings {
-    public static final String CATEGORY = "key.categories.voxelview3d";
+    public static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(net.minecraft.resources.Identifier.fromNamespaceAndPath("voxelview3d", "category"));
     public static final String OPEN_MAP = "key.voxelview3d.open_map";
     public static final String OPEN_WAYPOINTS_LIST = "key.voxelview3d.open_waypoints_list";
     public static final String CREATE_WAYPOINT = "key.voxelview3d.create_waypoint";
@@ -16,7 +16,8 @@ public class KeyBindings {
             KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_M,
-            CATEGORY
+            CATEGORY,
+            0
     );
 
     public static final KeyMapping OPEN_WAYPOINTS_LIST_KEY = new KeyMapping(
@@ -24,7 +25,8 @@ public class KeyBindings {
             KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_P,
-            CATEGORY
+            CATEGORY,
+            0
     );
 
     public static final KeyMapping CREATE_WAYPOINT_KEY = new KeyMapping(
@@ -32,6 +34,7 @@ public class KeyBindings {
             KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_KP_ADD, // Numpad +
-            CATEGORY
+            CATEGORY,
+            0
     );
 }

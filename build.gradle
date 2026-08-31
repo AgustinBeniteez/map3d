@@ -2,22 +2,22 @@ plugins {
     id 'java'
     id 'eclipse'
     id 'idea'
-    id 'net.minecraftforge.gradle' version '7.0.35'
+    id 'net.minecraftforge.gradle' version '7.0.36'
 }
 
 group = 'com.agustinbenitez.voxelview3d'
-version = '1.21.1-1.0.0'
+version = '26.1-1.0.0'
 
 base {
     archivesName = 'map-3d-usseewa'
 }
 
 java {
-    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
 }
 
 minecraft {
-    mappings channel: 'official', version: '1.21.1'
+    mappings channel: 'official', version: '26.1'
 
     runs {
         configureEach {
@@ -47,7 +47,7 @@ repositories {
 }
 
 dependencies {
-    implementation minecraft.dependency('net.minecraftforge:forge:1.21.1-52.1.16')
+    implementation minecraft.dependency('net.minecraftforge:forge:26.1-62.0.9')
 }
 
 // ForgeGradle 7.0.35 publishes runsJson as a value mapped from the metadata
@@ -63,15 +63,15 @@ tasks.configureEach {
 
 tasks.named('processResources', ProcessResources).configure {
     var replaceProperties = [
-            minecraft_version: '1.21.1',
-            minecraft_version_range: '[1.21.1,1.21.2)',
-            forge_version: '52.1.16',
-            forge_version_range: '[52.1.2,)',
-            loader_version_range: '[52,)',
+            minecraft_version: '26.1',
+            minecraft_version_range: '[26.1,27.0)',
+            forge_version: '62.0.9',
+            forge_version_range: '[62.0.9,)',
+            loader_version_range: '[62,)',
             mod_id: 'voxelview3d',
             mod_name: 'Map 3d usseewa',
             mod_license: 'All Rights Reserved',
-            mod_version: '1.21.1-1.0.0',
+            mod_version: '26.1-1.0.0',
             mod_authors: 'Agustin Benitez',
             mod_description: 'Client-side 3D map renderer'
     ]

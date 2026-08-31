@@ -8,13 +8,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.Animal;
-import net.minecraft.world.entity.animal.Squid;
-import net.minecraft.world.entity.GlowSquid;
+import net.minecraft.world.entity.animal.squid.Squid;
+import net.minecraft.world.entity.animal.squid.GlowSquid;
 import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -36,9 +37,12 @@ import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.core.Direction;
 import net.minecraft.core.BlockPos;
 import net.minecraft.client.renderer.entity.EntityRenderer;
-import net.minecraft.client.resources.model.BakedModel;
+
 import net.minecraft.util.RandomSource;
-import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.color.block.BlockTintSource;
 import net.minecraft.client.color.block.BlockColors;
 import net.minecraft.world.level.Level;
 import java.util.List;
@@ -72,14 +76,14 @@ public class VoxelMapRenderer {
         Player player = mc.player;
         
         // Setup 3D Rendering State
-        RenderSystem.enableDepthTest();
-        RenderSystem.depthFunc(515); // GL_LEQUAL
-        RenderSystem.enableCull(); // Enable Cull to avoid seeing backfaces and reduce visual noise
-        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+        // enableDepthTest
+        // depthFunc // GL_LEQUAL
+        // enableCull // Enable Cull to avoid seeing backfaces and reduce visual noise
+        // setShaderColor
         
         // Enable Blending for transparency
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
+        // enableBlend
+        // defaultBlendFunc
         
         poseStack.pushPose();
         
@@ -105,7 +109,7 @@ public class VoxelMapRenderer {
 
         int effectiveY = inspectingLayers ? cutY : player.getBlockY();
         
-        int minBuildHeight = mc.level != null ? mc.level.getMinBuildHeight() : -64;
+        int minBuildHeight = mc.level != null ? mc.level.getMinY() : -64;
         
         // Calculate Vertical Culling Bounds
         int renderMinY = minBuildHeight;
@@ -113,8 +117,8 @@ public class VoxelMapRenderer {
         
         boolean isUnderground = false;
         
-        boolean isNether = mc.level != null && mc.level.dimension().location().getPath().contains("nether");
-        boolean isEnd = mc.level != null && mc.level.dimension().location().getPath().contains("end");
+        boolean isNether = mc.level != null && mc.level.dimension().identifier().getPath().contains("nether");
+        boolean isEnd = mc.level != null && mc.level.dimension().identifier().getPath().contains("end");
 
         if (mc.level != null) {
             // Use Virtual Height for Environmental Calculations
@@ -225,7 +229,7 @@ public class VoxelMapRenderer {
                 
                 // Don't cut mountains/trees in Surface Mode (User Request)
                 // If we are "outside", we want to see the full height of the world
-                renderMaxY = mc.level.getMaxBuildHeight();
+                renderMaxY = mc.level.getMaxY();
             }
         }
         
@@ -265,12 +269,12 @@ public class VoxelMapRenderer {
         poseStack.popPose();
         
         // Reset state
-        RenderSystem.enableCull();
-        RenderSystem.disableDepthTest();
+        // enableCull
+        // disableDepthTest
     }
 
     // --- Helper for Textured Blocks ---
-    private static void renderTexturedBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, BakedModel model, BlockState state, float r, float g, float b, float a, int exposedFaces) {
+    private static void renderTexturedBox(BufferBuilder buf, Matrix4f pose, double x, double y, double z, float w, float h, float d, BlockState state, float r, float g, float b, float a, int exposedFaces) {
         float x0 = (float)x;
         float y0 = (float)y;
         float z0 = (float)z;
@@ -286,7 +290,7 @@ public class VoxelMapRenderer {
         
         // Top Face (y1) - Face Y+ - Bit 3 (8)
         if ((exposedFaces & 8) != 0) {
-            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.UP, rand);
+            TextureAtlasSprite sprite = getFaceSprite(state, Direction.UP, rand);
             float minU = sprite.getU0();
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
@@ -299,7 +303,7 @@ public class VoxelMapRenderer {
         
         // Bottom Face (y0) - Face Y- - Bit 2 (4)
         if ((exposedFaces & 4) != 0) {
-            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.DOWN, rand);
+            TextureAtlasSprite sprite = getFaceSprite(state, Direction.DOWN, rand);
             float minU = sprite.getU0();
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
@@ -312,7 +316,7 @@ public class VoxelMapRenderer {
         
         // North Face (z0) - Face Z- - Bit 4 (16)
         if ((exposedFaces & 16) != 0) {
-            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.NORTH, rand);
+            TextureAtlasSprite sprite = getFaceSprite(state, Direction.NORTH, rand);
             float minU = sprite.getU0();
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
@@ -325,7 +329,7 @@ public class VoxelMapRenderer {
         
         // South Face (z1) - Face Z+ - Bit 5 (32)
         if ((exposedFaces & 32) != 0) {
-            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.SOUTH, rand);
+            TextureAtlasSprite sprite = getFaceSprite(state, Direction.SOUTH, rand);
             float minU = sprite.getU0();
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
@@ -338,7 +342,7 @@ public class VoxelMapRenderer {
         
         // West Face (x0) - Face X- - Bit 0 (1)
         if ((exposedFaces & 1) != 0) {
-            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.WEST, rand);
+            TextureAtlasSprite sprite = getFaceSprite(state, Direction.WEST, rand);
             float minU = sprite.getU0();
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
@@ -351,7 +355,7 @@ public class VoxelMapRenderer {
         
         // East Face (x1) - Face X+ - Bit 1 (2)
         if ((exposedFaces & 2) != 0) {
-            TextureAtlasSprite sprite = getFaceSprite(model, state, Direction.EAST, rand);
+            TextureAtlasSprite sprite = getFaceSprite(state, Direction.EAST, rand);
             float minU = sprite.getU0();
             float maxU = sprite.getU1();
             float minV = sprite.getV0();
@@ -363,12 +367,25 @@ public class VoxelMapRenderer {
         }
     }
     
-    private static TextureAtlasSprite getFaceSprite(BakedModel model, BlockState state, Direction dir, RandomSource rand) {
-        List<BakedQuad> quads = model.getQuads(state, dir, rand);
-        if (quads != null && !quads.isEmpty()) {
-            return quads.get(0).getSprite();
+    private static List<BakedQuad> getQuadsForState(BlockState state, Direction dir, RandomSource rand) {
+        BlockStateModel model = Minecraft.getInstance().getModelManager().getBlockStateModelSet().get(state);
+        List<BlockStateModelPart> parts = new java.util.ArrayList<>();
+        model.collectParts(rand, parts);
+        List<BakedQuad> result = new java.util.ArrayList<>();
+        for (BlockStateModelPart part : parts) {
+            List<BakedQuad> q = part.getQuads(dir);
+            if (q != null) result.addAll(q);
         }
-        return model.getParticleIcon();
+        return result;
+    }
+
+    private static TextureAtlasSprite getFaceSprite(BlockState state, Direction dir, RandomSource rand) {
+        List<BakedQuad> quads = getQuadsForState(state, dir, rand);
+        if (!quads.isEmpty()) {
+            return quads.get(0).materialInfo().sprite();
+        }
+        BlockStateModel m = Minecraft.getInstance().getModelManager().getBlockStateModelSet().get(state);
+        return m.particleMaterial().sprite();
     }
     
     private static void renderChunkBlocksTextured(BufferBuilder buf, Matrix4f pose, ChunkPos cp,
@@ -398,9 +415,9 @@ public class VoxelMapRenderer {
             int h = relY + minBuildHeight;
             if (h < minY || h > maxY) continue;
             
-            double rx = (cp.x * 16 + x) - centerX;
+            double rx = (cp.x() * 16 + x) - centerX;
             double ry = h - centerY;
-            double rz = (cp.z * 16 + z) - centerZ;
+            double rz = (cp.z() * 16 + z) - centerZ;
 
             // Far special blocks are represented by cheap colored geometry in
             // the main pass when the scene is unusually dense.
@@ -470,7 +487,7 @@ public class VoxelMapRenderer {
                 state = Blocks.LADDER.defaultBlockState().setValue(LadderBlock.FACING, facing);
             }
             
-            BakedModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
+            
             
             float bw = 1.0f;
             float bh = 1.0f;
@@ -480,14 +497,14 @@ public class VoxelMapRenderer {
                 // Use actual 3D model for carpets and non-full blocks to get correct side UVs and geometry
                 Level level = Minecraft.getInstance().level;
                 BlockPos pos = new BlockPos(cp.getMinBlockX() + x, h, cp.getMinBlockZ() + z);
-                renderBakedModel(buf, pose, rx, ry, rz, model, state, brightness, brightness, brightness, alpha, exposedFaces, level, pos);
+                renderBakedModel(buf, pose, rx, ry, rz, state, brightness, brightness, brightness, alpha, exposedFaces, level, pos);
             } else {
-                renderTexturedBox(buf, pose, rx, ry, rz, bw, bh, bd, model, state, brightness, brightness, brightness, alpha, exposedFaces);
+                renderTexturedBox(buf, pose, rx, ry, rz, bw, bh, bd, state, brightness, brightness, brightness, alpha, exposedFaces);
             }
         }
     }
 
-    private static void renderBakedModel(BufferBuilder buf, Matrix4f pose, double x, double y, double z, BakedModel model, BlockState state, float r, float g, float b, float a, int exposedFaces, Level level, BlockPos pos) {
+    private static void renderBakedModel(BufferBuilder buf, Matrix4f pose, double x, double y, double z, BlockState state, float r, float g, float b, float a, int exposedFaces, Level level, BlockPos pos) {
         MODEL_RANDOM.setSeed(0L);
         RandomSource rand = MODEL_RANDOM;
         
@@ -495,24 +512,24 @@ public class VoxelMapRenderer {
         // Bits: 0=West, 1=East, 2=Down, 3=Up, 4=North, 5=South
         
         // West (X-)
-        if ((exposedFaces & 1) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.WEST, rand, r * 0.6f, g * 0.6f, b * 0.6f, a, level, pos);
+        if ((exposedFaces & 1) != 0) renderFace(buf, pose, x, y, z, state, Direction.WEST, rand, r * 0.6f, g * 0.6f, b * 0.6f, a, level, pos);
         // East (X+)
-        if ((exposedFaces & 2) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.EAST, rand, r * 0.6f, g * 0.6f, b * 0.6f, a, level, pos);
+        if ((exposedFaces & 2) != 0) renderFace(buf, pose, x, y, z, state, Direction.EAST, rand, r * 0.6f, g * 0.6f, b * 0.6f, a, level, pos);
         // Down (Y-)
-        if ((exposedFaces & 4) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.DOWN, rand, r * 0.5f, g * 0.5f, b * 0.5f, a, level, pos);
+        if ((exposedFaces & 4) != 0) renderFace(buf, pose, x, y, z, state, Direction.DOWN, rand, r * 0.5f, g * 0.5f, b * 0.5f, a, level, pos);
         // Up (Y+)
-        if ((exposedFaces & 8) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.UP, rand, r, g, b, a, level, pos);
+        if ((exposedFaces & 8) != 0) renderFace(buf, pose, x, y, z, state, Direction.UP, rand, r, g, b, a, level, pos);
         // North (Z-)
-        if ((exposedFaces & 16) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.NORTH, rand, r * 0.8f, g * 0.8f, b * 0.8f, a, level, pos);
+        if ((exposedFaces & 16) != 0) renderFace(buf, pose, x, y, z, state, Direction.NORTH, rand, r * 0.8f, g * 0.8f, b * 0.8f, a, level, pos);
         // South (Z+)
-        if ((exposedFaces & 32) != 0) renderFace(buf, pose, x, y, z, model, state, Direction.SOUTH, rand, r * 0.8f, g * 0.8f, b * 0.8f, a, level, pos);
+        if ((exposedFaces & 32) != 0) renderFace(buf, pose, x, y, z, state, Direction.SOUTH, rand, r * 0.8f, g * 0.8f, b * 0.8f, a, level, pos);
         
         // Also check for unculled faces (null direction) - always render these
-        renderFace(buf, pose, x, y, z, model, state, null, rand, r, g, b, a, level, pos);
+        renderFace(buf, pose, x, y, z, state, null, rand, r, g, b, a, level, pos);
     }
     
-    private static void renderFace(BufferBuilder buf, Matrix4f pose, double x, double y, double z, BakedModel model, BlockState state, Direction dir, RandomSource rand, float r, float g, float b, float a, Level level, BlockPos pos) {
-        List<BakedQuad> quads = model.getQuads(state, dir, rand);
+    private static void renderFace(BufferBuilder buf, Matrix4f pose, double x, double y, double z, BlockState state, Direction dir, RandomSource rand, float r, float g, float b, float a, Level level, BlockPos pos) {
+        List<BakedQuad> quads = getQuadsForState(state, dir, rand);
         if (quads == null || quads.isEmpty()) return;
         
         BlockColors blockColors = Minecraft.getInstance().getBlockColors();
@@ -522,9 +539,9 @@ public class VoxelMapRenderer {
             float qg = g;
             float qb = b;
             
-            if (quad.isTinted() && level != null && pos != null) {
-                int tintIndex = quad.getTintIndex();
-                int color = blockColors.getColor(state, level, pos, tintIndex);
+            if (quad.materialInfo().isTinted() && level != null && pos != null) {
+                int tintIndex = quad.materialInfo().tintIndex();
+                int color = (blockColors.getTintSource(state, tintIndex) != null && level instanceof net.minecraft.client.renderer.block.BlockAndTintGetter bg ? blockColors.getTintSource(state, tintIndex).colorInWorld(state, bg, pos) : -1);
                 float tr = (color >> 16 & 255) / 255.0F;
                 float tg = (color >> 8 & 255) / 255.0F;
                 float tb = (color & 255) / 255.0F;
@@ -533,23 +550,20 @@ public class VoxelMapRenderer {
                 qb *= tb;
             }
 
-            int[] vertices = quad.getVertices();
-            // DefaultVertexFormat.BLOCK: 8 ints per vertex (32 bytes)
-            // Position: 0, 1, 2 (floats)
-            // UV: 4, 5 (floats)
-            
+            net.minecraft.client.renderer.texture.TextureAtlasSprite sprite = quad.materialInfo().sprite();
+            float u0 = sprite.getU0();
+            float u1 = sprite.getU1();
+            float v0 = sprite.getV0();
+            float v1 = sprite.getV1();
+
             for (int i = 0; i < 4; i++) {
-                float vx = Float.intBitsToFloat(vertices[i * 8 + 0]);
-                float vy = Float.intBitsToFloat(vertices[i * 8 + 1]);
-                float vz = Float.intBitsToFloat(vertices[i * 8 + 2]);
+                org.joml.Vector3fc posVec = quad.position(i);
+                float u = (i == 0 || i == 3) ? u0 : u1;
+                float v = (i == 0 || i == 1) ? v0 : v1;
                 
-                float u = Float.intBitsToFloat(vertices[i * 8 + 4]);
-                float v = Float.intBitsToFloat(vertices[i * 8 + 5]);
-                
-                buf.addVertex(pose, (float)(x + vx), (float)(y + vy), (float)(z + vz))
+                buf.addVertex(pose, (float)(x + posVec.x()), (float)(y + posVec.y()), (float)(z + posVec.z()))
                    .setUv(u, v)
-                   .setColor(qr, qg, qb, a)
-                   ;
+                   .setColor(qr, qg, qb, a);
             }
         }
     }
@@ -614,9 +628,9 @@ public class VoxelMapRenderer {
             
             if (h < minY || h > maxY) continue;
             
-            double rx = (cp.x * 16 + x) + 0.5 - centerX;
+            double rx = (cp.x() * 16 + x) + 0.5 - centerX;
             double ry = h - centerY;
-            double rz = (cp.z * 16 + z) + 0.5 - centerZ;
+            double rz = (cp.z() * 16 + z) + 0.5 - centerZ;
 
             if (reducedDetail && rx * rx + rz * rz > detailRadiusSq) continue;
             
@@ -848,7 +862,7 @@ public class VoxelMapRenderer {
         ChunkPos playerChunk = player.chunkPosition();
         Map<ChunkPos, ChunkScanner.ScannedChunk> data = ChunkScanner.getData();
         BufferBuilder buf;
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        // setShader
         
         // Lava Color: Bright Orange 0xFF6600
         float r = 1.0f; 
@@ -863,12 +877,12 @@ public class VoxelMapRenderer {
         if (radius > 0) {
             for (int x = -radius; x <= radius; x++) {
                 for (int z = -radius; z <= radius; z++) {
-                     ChunkPos cp = new ChunkPos(playerChunk.x + x, playerChunk.z + z);
+                     ChunkPos cp = new ChunkPos(playerChunk.x() + x, playerChunk.z() + z);
                      
                      // Only render lava floor if the chunk is actually loaded/scanned
                      if (data.containsKey(cp)) {
-                         double rx = (cp.x * 16) - centerX;
-                         double rz = (cp.z * 16) - centerZ;
+                         double rx = (cp.x() * 16) - centerX;
+                         double rz = (cp.z() * 16) - centerZ;
                          
                          float x1 = (float)rx;
                          float z1 = (float)rz;
@@ -901,7 +915,7 @@ public class VoxelMapRenderer {
         for (ClientSettings.Waypoint wp : ClientSettings.waypoints) {
             if (!wp.visible) continue;
             // Only render waypoints in the current dimension
-            if (player.level() != null && !wp.getDimension().equals(player.level().dimension().location().toString())) continue;
+            if (player.level() != null && !wp.getDimension().equals(player.level().dimension().identifier().toString())) continue;
             
             double rx = wp.x + 0.5 - centerX;
             double rz = wp.z + 0.5 - centerZ;
@@ -939,18 +953,18 @@ public class VoxelMapRenderer {
                 poseStack.scale(scale, -scale, scale);
                 
                 // Disable depth test to ensure text/icon is always visible (on top of beam and blocks)
-                RenderSystem.disableDepthTest();
+                // disableDepthTest
 
                 // --- Draw Icon ---
-                ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
-                RenderSystem.setShader(GameRenderer::getPositionTexShader);
-                RenderSystem.setShaderTexture(0, iconLoc);
+                Identifier iconLoc = Identifier.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+                // setShader
+                // setShaderTexture
                 
                 // Tint Icon with Waypoint Color
                 float r = ((wp.color >> 16) & 0xFF) / 255.0f;
                 float g = ((wp.color >> 8) & 0xFF) / 255.0f;
                 float b = (wp.color & 0xFF) / 255.0f;
-                RenderSystem.setShaderColor(r, g, b, 1.0F);
+                // setShaderColor
                 
                 // Draw Icon Quad
                 float iconSize = 16.0f; // Size in local scaled units
@@ -969,7 +983,7 @@ public class VoxelMapRenderer {
                 RenderBufferUtil.drawIfNotEmpty(bufIcon);
                 
                 // Reset Shader Color
-                RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
+                // setShaderColor
                 // -----------------
                 
                 int textWidth = Minecraft.getInstance().font.width(wp.name);
@@ -984,7 +998,7 @@ public class VoxelMapRenderer {
                 Minecraft.getInstance().font.drawInBatch(wp.name, -halfWidth, 0, 0xFFFFFFFF, false, poseStack.last().pose(), Minecraft.getInstance().renderBuffers().bufferSource(), Font.DisplayMode.SEE_THROUGH, 0x40000000, 15728880);
                 
                 // Re-enable depth test
-                RenderSystem.enableDepthTest();
+                // enableDepthTest
                 
                 poseStack.popPose();
             }
@@ -997,13 +1011,13 @@ public class VoxelMapRenderer {
         if (!(player instanceof AbstractClientPlayer)) return;
         
         AbstractClientPlayer abstractClientPlayer = (AbstractClientPlayer) player;
-        ResourceLocation skin = abstractClientPlayer.getSkin().texture();
+        Identifier skin = abstractClientPlayer.getSkin().body().texturePath();
         
         // Spectral Effect: Disable Depth Test to see through walls
-        RenderSystem.disableDepthTest();
+        // disableDepthTest
         
-        RenderSystem.setShaderTexture(0, skin);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        // setShaderTexture
+        // setShader
         
         poseStack.pushPose();
         // Rotate to match player facing
@@ -1020,15 +1034,15 @@ public class VoxelMapRenderer {
         
         // 1. Render Spectral Glow (Cyan Border)
         // Use Inverted Hull but with Cyan color and transparency if desired
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        // setShader
         buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         // Cyan: R=0, G=1, B=1. 
         renderInvertedColorBox(buf, poseStack.last().pose(), 0, 0, 0, borderSize, 0.0f, 1.0f, 1.0f, 1.0f); // Cyan
         RenderBufferUtil.drawIfNotEmpty(buf);
         
         // 2. Render Textured Head
-        RenderSystem.setShaderTexture(0, skin);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        // setShaderTexture
+        // setShader
         buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
         renderTexturedHead(buf, poseStack.last().pose(), 0, 0, 0, headSize);
         RenderBufferUtil.drawIfNotEmpty(buf);
@@ -1036,7 +1050,7 @@ public class VoxelMapRenderer {
         poseStack.popPose();
         
         // Restore Depth Test
-        RenderSystem.enableDepthTest();
+        // enableDepthTest
     }
 
     private static void cachePickState(Matrix4f pose, Player player, double cameraY,
@@ -1245,7 +1259,7 @@ public class VoxelMapRenderer {
                                                  int minBuildHeight, int minY, int maxY,
                                                  boolean isUnderground, Direction cullDirection,
                                                  boolean reducedDetail, double detailRadiusSq) {
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        // setShader
         BufferBuilder buf = null;
         boolean building = false;
         int batchedBlocks = 0;
@@ -1281,8 +1295,8 @@ public class VoxelMapRenderer {
                                                     int minBuildHeight, int minY, int maxY,
                                                     boolean isUnderground, Direction cullDirection,
                                                     boolean reducedDetail, double detailRadiusSq) {
-        RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
-        RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_BLOCKS);
+        // setShader
+        // setShaderTexture
         BufferBuilder buf = null;
         boolean building = false;
         int batchedBlocks = 0;
@@ -1318,8 +1332,8 @@ public class VoxelMapRenderer {
                                                  int minBuildHeight, int minY, int maxY,
                                                  boolean isUnderground, Direction cullDirection,
                                                  boolean reducedDetail, double detailRadiusSq) {
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        RenderSystem.disableCull();
+        // setShader
+        // disableCull
         BufferBuilder buf = null;
         boolean building = false;
         int batchedBlocks = 0;
@@ -1347,12 +1361,12 @@ public class VoxelMapRenderer {
         }
 
         if (building) RenderBufferUtil.drawIfNotEmpty(buf);
-        RenderSystem.enableCull();
+        // enableCull
     }
 
     private static boolean isChunkWithinRadius(ChunkPos pos, ChunkPos center, int radius) {
         return radius <= 0
-                || (Math.abs(pos.x - center.x) <= radius && Math.abs(pos.z - center.z) <= radius);
+                || (Math.abs(pos.x() - center.x()) <= radius && Math.abs(pos.z() - center.z()) <= radius);
     }
 
     private static boolean isChunkOnScreen(Matrix4f pose, ChunkPos pos,
@@ -1464,9 +1478,9 @@ public class VoxelMapRenderer {
             
             // Calculate absolute position relative to player (camera)
             // Center the block (blocks are 0-1, so center is +0.5)
-            double rx = (cp.x * 16 + x) + 0.5 - centerX;
+            double rx = (cp.x() * 16 + x) + 0.5 - centerX;
             double ry = h - centerY;
-            double rz = (cp.z * 16 + z) + 0.5 - centerZ;
+            double rz = (cp.z() * 16 + z) + 0.5 - centerZ;
 
             boolean outsideDetailRadius = reducedDetail && rx * rx + rz * rz > detailRadiusSq;
             if (outsideDetailRadius && shouldHideInDistantLod(renderType)) continue;
@@ -2745,12 +2759,12 @@ public class VoxelMapRenderer {
                      float zOff = 0.4f;
                      
                      // Crossbar
-                     renderBox(buf, model, 0, 0.35, zOff, 0.8f, 0.1f, 0.1f, wR, wG, wB, alpha);
+                     renderBox(buf, pose, 0, 0.35, zOff, 0.8f, 0.1f, 0.1f, wR, wG, wB, alpha);
                      
                      // Sheet (Longer)
                      // Height 1.5 blocks visually?
                      // Start at 0.3, go down to -1.2?
-                     renderBox(buf, model, 0, -0.4, zOff - 0.06, 0.7f, 1.4f, 0.05f, bR, bG, bB, alpha);
+                     renderBox(buf, pose, 0, -0.4, zOff - 0.06, 0.7f, 1.4f, 0.05f, bR, bG, bB, alpha);
                      
                  } else {
                      // Standing Banner
@@ -2766,16 +2780,16 @@ public class VoxelMapRenderer {
                      // Top is at +1.5.
                      
                      // Pole (Thin)
-                     renderBox(buf, model, 0, 0.5, 0, 0.0625f, 2.0f, 0.0625f, wR, wG, wB, alpha);
+                     renderBox(buf, pose, 0, 0.5, 0, 0.0625f, 2.0f, 0.0625f, wR, wG, wB, alpha);
                      
                      // Crossbar (Top)
                      // At Y = +1.4
-                     renderBox(buf, model, 0, 1.4, 0, 0.8f, 0.0625f, 0.0625f, wR, wG, wB, alpha);
+                     renderBox(buf, pose, 0, 1.4, 0, 0.8f, 0.0625f, 0.0625f, wR, wG, wB, alpha);
                      
                      // Sheet (Hanging)
                      // From 1.4 down. Length 1.6.
                      // Center Y = 1.4 - 0.8 = 0.6.
-                     renderBox(buf, model, 0, 0.6, 0.04, 0.7f, 1.6f, 0.04f, bR, bG, bB, alpha);
+                     renderBox(buf, pose, 0, 0.6, 0.04, 0.7f, 1.6f, 0.04f, bR, bG, bB, alpha);
                  }
 
             } else if (renderType >= 41 && renderType <= 56) { // RENDER_CARPET (White to Black)
@@ -3051,7 +3065,7 @@ public class VoxelMapRenderer {
         Map<ChunkPos, ChunkScanner.ScannedChunk> scannedData = ChunkScanner.getData();
         ChunkPos playerChunk = player.chunkPosition();
 
-        Map<ResourceLocation, List<EntityIcon>> iconsByTexture = new HashMap<>();
+        Map<Identifier, List<EntityIcon>> iconsByTexture = new HashMap<>();
         
         for (Entity e : entities) {
             if (e == player) continue; 
@@ -3064,8 +3078,8 @@ public class VoxelMapRenderer {
             if (!scannedData.containsKey(entityChunk)) continue;
             
             if (radius > 0) {
-                 int dx = Math.abs(entityChunk.x - playerChunk.x);
-                 int dz = Math.abs(entityChunk.z - playerChunk.z);
+                 int dx = Math.abs(entityChunk.x() - playerChunk.x());
+                 int dz = Math.abs(entityChunk.z() - playerChunk.z());
                  if (dx > radius || dz > radius) continue;
             }
             
@@ -3078,8 +3092,13 @@ public class VoxelMapRenderer {
             double rz = e.getZ() - centerZ;
 
             try {
-                EntityRenderer<? super Entity> renderer = mc.getEntityRenderDispatcher().getRenderer(e);
-                ResourceLocation texture = renderer.getTextureLocation(e);
+                Identifier texture = null;
+                if (e instanceof AbstractClientPlayer p) {
+                    texture = p.getSkin().body().texturePath();
+                } else {
+                    Identifier typeId = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(e.getType());
+                    texture = Identifier.fromNamespaceAndPath(typeId.getNamespace(), "textures/entity/" + typeId.getPath() + ".png");
+                }
                 if (texture == null) continue;
 
                 float size = net.minecraft.util.Mth.clamp(
@@ -3108,12 +3127,12 @@ public class VoxelMapRenderer {
         if (iconsByTexture.isEmpty()) return;
 
         BufferBuilder buf;
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.disableCull();
-        RenderSystem.disableDepthTest();
+        // enableBlend
+        // defaultBlendFunc
+        // disableCull
+        // disableDepthTest
 
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        // setShader
         buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         for (List<EntityIcon> icons : iconsByTexture.values()) {
             for (EntityIcon icon : icons) {
@@ -3122,9 +3141,9 @@ public class VoxelMapRenderer {
         }
         RenderBufferUtil.drawIfNotEmpty(buf);
 
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        for (Map.Entry<ResourceLocation, List<EntityIcon>> entry : iconsByTexture.entrySet()) {
-            RenderSystem.setShaderTexture(0, entry.getKey());
+        // setShader
+        for (Map.Entry<Identifier, List<EntityIcon>> entry : iconsByTexture.entrySet()) {
+            // RenderSystem.setShaderTexture(0, entry.getKey());
             buf = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
             for (EntityIcon icon : entry.getValue()) {
                 appendEntityIconTexture(buf, poseStack, icon, cameraYaw, cameraPitch);
@@ -3132,9 +3151,9 @@ public class VoxelMapRenderer {
             RenderBufferUtil.drawIfNotEmpty(buf);
         }
 
-        RenderSystem.setShaderColor(1.0f, 1.0f, 1.0f, 1.0f);
-        RenderSystem.enableDepthTest();
-        RenderSystem.enableCull();
+        // setShaderColor
+        // enableDepthTest
+        // enableCull
     }
 
     private static int getEntityIconBorderColor(Entity entity) {
@@ -3159,7 +3178,7 @@ public class VoxelMapRenderer {
     private static boolean uses64PixelEntityTexture(Entity entity) {
         return entity instanceof AbstractClientPlayer
                 || entity instanceof Villager
-                || entity instanceof net.minecraft.world.entity.monster.Zombie;
+                || entity instanceof net.minecraft.world.entity.monster.zombie.Zombie;
     }
 
     private static void appendEntityIconBorder(BufferBuilder buf, PoseStack poseStack,
@@ -3529,13 +3548,13 @@ public class VoxelMapRenderer {
         float z0 = (float)(selectedBlock.getZ() - player.getZ()) - padding;
         float z1 = z0 + 1.0f + padding * 2.0f;
 
-        RenderSystem.disableDepthTest();
-        RenderSystem.depthMask(false);
-        RenderSystem.disableCull();
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        RenderSystem.lineWidth(3.0f);
+        // disableDepthTest
+        // depthMask
+        // disableCull
+        // enableBlend
+        // defaultBlendFunc
+        // setShader
+        // lineWidth
 
         BufferBuilder buf;
         Matrix4f pose = poseStack.last().pose();
@@ -3555,10 +3574,10 @@ public class VoxelMapRenderer {
         appendOutlineLine(buf, pose, x0, y0, z1, x0, y1, z1);
 
         RenderBufferUtil.drawIfNotEmpty(buf);
-        RenderSystem.lineWidth(1.0f);
-        RenderSystem.depthMask(true);
-        RenderSystem.enableDepthTest();
-        RenderSystem.enableCull();
+        // lineWidth
+        // depthMask
+        // enableDepthTest
+        // enableCull
     }
 
     private static void appendOutlineLine(BufferBuilder buf, Matrix4f pose,
@@ -3576,17 +3595,17 @@ public class VoxelMapRenderer {
         
         ChunkPos centerChunk = player.chunkPosition();
         BufferBuilder buf;
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        RenderSystem.lineWidth(2.0f);
+        // setShader
+        // lineWidth
         
         // Use LINES mode
         buf = Tesselator.getInstance().begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
         Matrix4f pose = poseStack.last().pose();
         
-        int minChunkX = centerChunk.x - radius;
-        int maxChunkX = centerChunk.x + radius;
-        int minChunkZ = centerChunk.z - radius;
-        int maxChunkZ = centerChunk.z + radius;
+        int minChunkX = centerChunk.x() - radius;
+        int maxChunkX = centerChunk.x() + radius;
+        int minChunkZ = centerChunk.z() - radius;
+        int maxChunkZ = centerChunk.z() + radius;
         
         // Yellow color for grid, semi-transparent
         int r = 255, g = 255, b = 0, a = 128;
@@ -3622,6 +3641,6 @@ public class VoxelMapRenderer {
         }
         
         RenderBufferUtil.drawIfNotEmpty(buf);
-        RenderSystem.lineWidth(1.0f);
+        // lineWidth
     }
 }

@@ -5,16 +5,18 @@ import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.biome.Biome;
 import org.joml.Matrix4f;
@@ -113,7 +115,7 @@ public class VoxelMapScreen extends Screen {
         // Auto-select current dimension when opening the screen
         Minecraft mc = Minecraft.getInstance();
         if (mc.level != null) {
-            this.currentDimensionFilter = mc.level.dimension().location().toString();
+            this.currentDimensionFilter = mc.level.dimension().identifier().toString();
         }
     }
     
@@ -127,29 +129,29 @@ public class VoxelMapScreen extends Screen {
         
         // Toggle Buttons
         toggleVillagers = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/villager.png"),
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/villager_hide.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/types/villager.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/types/villager_hide.png"),
             () -> ClientSettings.showVillagers,
             b -> { ClientSettings.showVillagers = !ClientSettings.showVillagers; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
         
         toggleAnimals = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/animal.png"),
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/animal_hide.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/types/animal.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/types/animal_hide.png"),
             () -> ClientSettings.showAnimals,
             b -> { ClientSettings.showAnimals = !ClientSettings.showAnimals; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
         
         toggleEnemies = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/enemie.png"),
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/enemie_hide.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/types/enemie.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/types/enemie_hide.png"),
             () -> ClientSettings.showEnemies,
             b -> { ClientSettings.showEnemies = !ClientSettings.showEnemies; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
         
         togglePlayers = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/player.png"),
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/types/player_hide.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/types/player.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/types/player_hide.png"),
             () -> ClientSettings.showPlayers,
             b -> { ClientSettings.showPlayers = !ClientSettings.showPlayers; SettingsManager.saveSettings(); }));
         x += btnWidth + 10; // Extra gap for separator
@@ -160,20 +162,20 @@ public class VoxelMapScreen extends Screen {
             // Or we can let it be persistent if static variable.
             // User request: "si es de noche se cambie solo a este estado noche"
             // So we sync it.
-            long time = this.minecraft.level.getDayTime() % 24000;
+            long time = this.minecraft.level.getGameTime() % 24000;
             ClientSettings.isNightMode = time >= 13000 && time <= 23000;
         }
         
         toggleNightMode = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/night.png"), // On (Night)
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/day.png"),   // Off (Day)
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/night.png"), // On (Night)
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/day.png"),   // Off (Day)
             () -> ClientSettings.isNightMode,
             b -> ClientSettings.isNightMode = !ClientSettings.isNightMode) {
                 
-                private final ResourceLocation caveIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/cave.png");
+                private final Identifier caveIcon = Identifier.fromNamespaceAndPath("voxelview3d", "textures/cave.png");
                 
                 @Override
-                public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
                     boolean isOn = stateSupplier.get();
                     
                     // Logic:
@@ -184,25 +186,25 @@ public class VoxelMapScreen extends Screen {
                     //   - Show Night Icon if Night Mode is ON
                     //   - Show Day Icon if Night Mode is OFF
                     
-                    ResourceLocation texture;
+                    Identifier texture;
                     if (VoxelMapRenderer.isUndergroundState) {
                          texture = isOn ? caveIcon : textureOff;
                     } else {
                          texture = isOn ? textureOn : textureOff;
                     }
                     
-                    RenderSystem.setShaderTexture(0, texture);
-                    RenderSystem.enableBlend();
+                    // texture texture
+                    // enableBlend
                     
                     // Draw background if hovered
                     if (this.isHovered) {
-                         guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x40FFFFFF);
+                         graphics.fill(getX(), getY(), getX() + width, getY() + height, 0x40FFFFFF);
                     }
                     
                     // Draw icon centered
                     int iconSize = width - 4;
-                    guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
-                    RenderSystem.disableBlend();
+                    graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
+                    // disableBlend
                     
                     // Tooltip logic removed from here to fix scaling issue
 
@@ -212,16 +214,16 @@ public class VoxelMapScreen extends Screen {
 
         // Chunk Grid Toggle
         toggleChunkGrid = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/chunks.png"),
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/chunkshide.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/chunks.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/chunkshide.png"),
             () -> ClientSettings.showChunkGrid,
             b -> { ClientSettings.showChunkGrid = !ClientSettings.showChunkGrid; SettingsManager.saveSettings(); }));
         x += btnWidth + 5;
 
         // Perspective Toggle
         togglePerspective = addRenderableWidget(new ImageToggleButton(x, buttonY, btnWidth, btnWidth,
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/side.png"),
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/up.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/side.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/up.png"),
             () -> !ClientSettings.isTopDownView,
             b -> {
                 ClientSettings.isTopDownView = !ClientSettings.isTopDownView;
@@ -233,15 +235,15 @@ public class VoxelMapScreen extends Screen {
         // Waypoints Button
         waypointsBtn = addRenderableWidget(new IconTextButton(x, buttonY, 120, 20, 
             Component.translatable("voxelview3d.waypoints"),
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/iconpoints.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/iconpoints.png"),
             b -> toggleModal()));
         
         // Layer Slider
         int minY = -64;
         int maxY = 320;
         if (this.minecraft.level != null) {
-            minY = this.minecraft.level.getMinBuildHeight();
-            maxY = this.minecraft.level.getMaxBuildHeight();
+            minY = this.minecraft.level.getMinY();
+            maxY = this.minecraft.level.getMaxY();
         }
         
         // Slider moved to left, below settings button (Settings at 10, 10, size 20)
@@ -255,7 +257,7 @@ public class VoxelMapScreen extends Screen {
         // User requested to move it up "un poco mas". Let's try height - 65.
         // Width 40, Height 20.
         int goBtnY = this.height - 65;
-        goBtn = addRenderableWidget(new Button(10, goBtnY, 40, 20, Component.literal("Go"), b -> {
+        goBtn = addRenderableWidget(new Button.Plain(10, goBtnY, 40, 20, Component.literal("Go"), b -> {
             if (layerSlider != null) {
                 layerSlider.resetToPlayer();
             }
@@ -265,44 +267,44 @@ public class VoxelMapScreen extends Screen {
             clearBlockSelection();
         }, Supplier::get) {
              @Override
-             public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+             protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
                  // Custom render
                  int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
                  int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
                  int textColor = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
                  
-                 guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
-                 guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
+                 graphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                 graphics.outline(getX(), getY(), width, height, borderColor);
                  
                  // Render Player Face
                  if (minecraft.player != null) {
-                     ResourceLocation skin = minecraft.getConnection().getPlayerInfo(minecraft.player.getUUID()).getSkin().texture();
-                     RenderSystem.setShaderTexture(0, skin);
+                     Identifier skin = minecraft.getConnection().getPlayerInfo(minecraft.player.getUUID()).getSkin().body().texturePath();
+                     // texture skin
                      // Head is at u=8, v=8, size=8x8.
                      // Blit: x, y, size, size, u, v, uWidth, vHeight, textureWidth, textureHeight
-                     guiGraphics.blit(skin, getX() + 2, getY() + 2, 16, 16, 8.0f, 8.0f, 8, 8, 64, 64);
+                     graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, skin, getX() + 2, getY() + 2, 16, 16, 8, 8, 8, 8, 64, 64);
                      
                      // Draw 2nd layer (Hat)
-                     guiGraphics.blit(skin, getX() + 2, getY() + 2, 16, 16, 40.0f, 8.0f, 8, 8, 64, 64);
+                     graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, skin, getX() + 2, getY() + 2, 16, 16, 40, 8, 8, 8, 64, 64);
                  }
                  
                  // Draw "Go" Text
-                 guiGraphics.drawString(font, getMessage(), getX() + 20, getY() + (height - 8) / 2, textColor);
+                 graphics.text(font, getMessage(), getX() + 20, getY() + (height - 8) / 2, textColor);
              }
         });
         
         // Close Map Button (Top Right)
-        closeMapBtn = addRenderableWidget(new Button(this.width - 25, 5, 20, 20, Component.literal("X"), b -> this.onClose(), Supplier::get) {
+        closeMapBtn = addRenderableWidget(new Button.Plain(this.width - 25, 5, 20, 20, Component.literal("X"), b -> this.onClose(), Supplier::get) {
              @Override
-             public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+             protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
                  // Custom dark style
                  int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
                  int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
                  int textColor = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
                  
-                 guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
-                 guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
-                 guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
+                 graphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                 graphics.outline(getX(), getY(), width, height, borderColor);
+                 graphics.centeredText(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
              }
         });
 
@@ -369,17 +371,17 @@ public class VoxelMapScreen extends Screen {
         
         for (int i = 0; i < COLORS.length; i++) {
             final int color = COLORS[i];
-            Button btn = new Button(startX + (i * (colSize + 4)), startY, colSize, colSize, Component.empty(), b -> {
+            Button btn = new Button.Plain(startX + (i * (colSize + 4)), startY, colSize, colSize, Component.empty(), b -> {
                 selectedColor = color;
             }, Supplier::get) {
                 @Override
-                public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
                     // Custom dark style
                     int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
                     int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
                     
-                    guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
-                    guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
+                    graphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                    graphics.outline(getX(), getY(), width, height, borderColor);
                 }
             };
             addRenderableWidget(btn);
@@ -396,17 +398,17 @@ public class VoxelMapScreen extends Screen {
         
         for (int i = 1; i <= 10; i++) {
             final String iconName = "icon" + i;
-            Button btn = new Button(iconStartX + ((i - 1) * (iconSize + 2)), iconStartY, iconSize, iconSize, Component.empty(), b -> {
+            Button btn = new Button.Plain(iconStartX + ((i - 1) * (iconSize + 2)), iconStartY, iconSize, iconSize, Component.empty(), b -> {
                 selectedIcon = iconName;
             }, Supplier::get) {
                 @Override
-                public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
                     // Custom dark style
                     int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
                     int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
                     
-                    guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
-                    guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
+                    graphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                    graphics.outline(getX(), getY(), width, height, borderColor);
                 }
             };
             addRenderableWidget(btn);
@@ -419,19 +421,19 @@ public class VoxelMapScreen extends Screen {
         int desiredButtonY = modalY + modalH - 30;
         int finalButtonY = Math.max(minButtonY, desiredButtonY);
         
-        createWaypointBtn = addRenderableWidget(new Button(centerX - 100, finalButtonY, 200, 20, Component.translatable("voxelview3d.waypoint.save"), b -> {
+        createWaypointBtn = addRenderableWidget(new Button.Plain(centerX - 100, finalButtonY, 200, 20, Component.translatable("voxelview3d.waypoint.save"), b -> {
             createWaypoint();
         }, Supplier::get) {
              @Override
-             public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+             protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
                  // Custom dark style
                  int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
                  int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
                  int textColor = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
                  
-                 guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
-                 guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
-                 guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
+                 graphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                 graphics.outline(getX(), getY(), width, height, borderColor);
+                 graphics.centeredText(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
              }
         });
         
@@ -447,8 +449,8 @@ public class VoxelMapScreen extends Screen {
         
         // Hide All Button
         hideAllBtn = addRenderableWidget(new ImageToggleButton(modalX + 10 + searchW + 5, modalY + 35, 20, 20,
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/hideall.png"), // On (All Hidden)
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/nothideall.png"), // Off (Visible/Mixed)
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/hideall.png"), // On (All Hidden)
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/nothideall.png"), // Off (Visible/Mixed)
             () -> areAllHidden(currentDimensionFilter),
             b -> {
                 boolean allHidden = areAllHidden(currentDimensionFilter);
@@ -464,7 +466,7 @@ public class VoxelMapScreen extends Screen {
             }));
         
         // Dimension Filter Button
-        dimensionFilterBtn = addRenderableWidget(new Button(modalX + 10 + searchW + 5 + 20 + 5, modalY + 35, 20, 20, Component.empty(), b -> {
+        dimensionFilterBtn = addRenderableWidget(new Button.Plain(modalX + 10 + searchW + 5 + 20 + 5, modalY + 35, 20, 20, Component.empty(), b -> {
             // Cycle Dimensions: Overworld -> Nether -> End -> Overworld
             List<String> dims = getAvailableDimensions();
             if (dims.isEmpty()) {
@@ -479,21 +481,21 @@ public class VoxelMapScreen extends Screen {
             scrollOffset = 0;
         }, Supplier::get) {
             @Override
-            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
                 // Draw Background
-                super.renderWidget(guiGraphics, mouseX, mouseY, partialTick);
+                super.extractContents(graphics, mouseX, mouseY, a);
                 
                 // Draw Icon based on dimension
-                ResourceLocation texture = getDimensionIcon(currentDimensionFilter);
+                Identifier texture = getDimensionIcon(currentDimensionFilter);
                 
-                RenderSystem.setShaderTexture(0, texture);
+                // texture texture
                 // Draw 16x16 icon centered in 20x20 button
-                guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, 16, 16, 16, 16);
+                graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, texture, getX() + 2, getY() + 2, 0, 0, 16, 16, 16, 16);
                 
                 // Check for duplicates of same type
                 List<String> dims = getAvailableDimensions();
                 List<String> sameTypeDims = new ArrayList<>();
-                ResourceLocation myIcon = getDimensionIcon(currentDimensionFilter);
+                Identifier myIcon = getDimensionIcon(currentDimensionFilter);
                 
                 for (String d : dims) {
                     if (getDimensionIcon(d).equals(myIcon)) {
@@ -505,14 +507,14 @@ public class VoxelMapScreen extends Screen {
                     int idx = sameTypeDims.indexOf(currentDimensionFilter);
                     if (idx >= 0) {
                         String num = String.valueOf(idx + 1);
-                        PoseStack poseStack = guiGraphics.pose();
+                        PoseStack poseStack = new PoseStack();
                         poseStack.pushPose();
                         // Position in bottom right corner
                         // Button is 20x20. Text is small.
                         // Translate to x+14, y+12
                         poseStack.translate(getX() + 12, getY() + 12, 200); 
                         poseStack.scale(0.7f, 0.7f, 1f);
-                        guiGraphics.drawString(font, num, 0, 0, 0xFFFFFF, true);
+                        graphics.text(font, num, 0, 0, 0xFFFFFF, true);
                         poseStack.popPose();
                     }
                 }
@@ -522,7 +524,7 @@ public class VoxelMapScreen extends Screen {
         // Open Create Mode Button (in List Mode)
         openCreateModeBtn = addRenderableWidget(new IconTextButton(centerX - 100, modalY + modalH - 40, 200, 20, 
             Component.translatable("voxelview3d.waypoint.create_new"), 
-            ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/newpoint.png"),
+            Identifier.fromNamespaceAndPath("voxelview3d", "textures/newpoint.png"),
             b -> {
                 isCreatingMode = true;
                 editingWaypoint = null;
@@ -543,7 +545,7 @@ public class VoxelMapScreen extends Screen {
             }));
         
         // Close Button (Small X in top right of the whole modal)
-        closeModalBtn = addRenderableWidget(new Button(modalX + modalW - 25, modalY + 5, 20, 20, Component.literal("X"), b -> {
+        closeModalBtn = addRenderableWidget(new Button.Plain(modalX + modalW - 25, modalY + 5, 20, 20, Component.literal("X"), b -> {
             if (isCreatingMode) {
                 isCreatingMode = false;
                 editingWaypoint = null;
@@ -554,15 +556,15 @@ public class VoxelMapScreen extends Screen {
             }
         }, Supplier::get) {
             @Override
-            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
                 // Custom dark style
                 int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
                 int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
                 int textColor = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
                 
-                guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
-                guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
-                guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
+                graphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                graphics.outline(getX(), getY(), width, height, borderColor);
+                graphics.centeredText(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
             }
         });
         
@@ -610,43 +612,43 @@ public class VoxelMapScreen extends Screen {
         }).bounds(settingsX + 10, settingsY + 150, settingsW - 20, 20).build());
 
         // Delete All Button (Settings)
-        deleteAllBtn = addRenderableWidget(new Button(settingsX + 10, settingsY + 210, settingsW - 20, 20, Component.translatable("voxelview3d.waypoint.delete_all"), b -> {
+        deleteAllBtn = addRenderableWidget(new Button.Plain(settingsX + 10, settingsY + 210, settingsW - 20, 20, Component.translatable("voxelview3d.waypoint.delete_all"), b -> {
              ClientSettings.waypoints.clear();
              WaypointManager.saveWaypoints();
         }, Supplier::get) {
             @Override
-            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
                 // Draw background (Reddish?)
                 int color = isHovered ? 0xFFFF0000 : 0xFFAA0000;
-                guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x80000000); // Black background
-                guiGraphics.renderOutline(getX(), getY(), width, height, color); // Red border
+                graphics.fill(getX(), getY(), getX() + width, getY() + height, 0x80000000); // Black background
+                graphics.outline(getX(), getY(), width, height, color); // Red border
                 
                 // Draw Icon
-                ResourceLocation icon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/deletehover.png");
-                RenderSystem.setShaderTexture(0, icon);
-                RenderSystem.enableBlend();
-                guiGraphics.blit(icon, getX() + 5, getY() + 2, 0, 0, 16, 16, 16, 16);
-                RenderSystem.disableBlend();
+                Identifier icon = Identifier.fromNamespaceAndPath("voxelview3d", "textures/deletehover.png");
+                // texture icon
+                // enableBlend
+                graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, icon, getX() + 5, getY() + 2, 0, 0, 16, 16, 16, 16);
+                // disableBlend
                 
                 // Draw Text (Red)
-                guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2 + 10, getY() + (height - 8) / 2, 0xFFFF5555);
+                graphics.centeredText(font, getMessage(), getX() + width / 2 + 10, getY() + (height - 8) / 2, 0xFFFF5555);
             }
         });
 
-        closeSettingsBtn = addRenderableWidget(new Button(settingsX + settingsW - 25, settingsY + 10, 20, 20, Component.literal("X"), b -> {
+        closeSettingsBtn = addRenderableWidget(new Button.Plain(settingsX + settingsW - 25, settingsY + 10, 20, 20, Component.literal("X"), b -> {
             showSettingsModal = false;
             updateModalVisibility();
         }, Supplier::get) {
             @Override
-            public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+            protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
                 // Custom dark style
                 int bgColor = isHovered ? 0xFF202020 : 0xFF101010;
                 int borderColor = isHovered ? 0xFFAAAAAA : 0xFF606060;
                 int textColor = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
                 
-                guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
-                guiGraphics.renderOutline(getX(), getY(), width, height, borderColor);
-                guiGraphics.drawCenteredString(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
+                graphics.fill(getX(), getY(), getX() + width, getY() + height, bgColor);
+                graphics.outline(getX(), getY(), width, height, borderColor);
+                graphics.centeredText(font, getMessage(), getX() + width / 2, getY() + (height - 8) / 2, textColor);
             }
         });
     }
@@ -834,7 +836,7 @@ public class VoxelMapScreen extends Screen {
         isCreatingMode = true;
         editingWaypoint = null;
         if (minecraft.level != null) {
-            currentDimensionFilter = minecraft.level.dimension().location().toString();
+            currentDimensionFilter = minecraft.level.dimension().identifier().toString();
         }
 
         wpX.setValue(String.valueOf(selectedMapBlock.getX()));
@@ -889,17 +891,17 @@ public class VoxelMapScreen extends Screen {
     }
     
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (KeyBindings.OPEN_MAP_KEY.matches(keyCode, scanCode)) {
+    public boolean keyPressed(KeyEvent event) {
+        if (KeyBindings.OPEN_MAP_KEY.matches(event)) {
             // If user is typing in an input field, don't close the map
             if (this.getFocused() instanceof EditBox) {
-                return super.keyPressed(keyCode, scanCode, modifiers);
+                return super.keyPressed(event);
             }
             this.onClose();
             return true;
         }
 
-        if (KeyBindings.CREATE_WAYPOINT_KEY.matches(keyCode, scanCode)) {
+        if (KeyBindings.CREATE_WAYPOINT_KEY.matches(event)) {
             showWaypointModal = true;
             isCreatingMode = true;
             showSettingsModal = false; // Ensure settings are closed
@@ -907,7 +909,7 @@ public class VoxelMapScreen extends Screen {
             
             // Auto-switch filter to current dimension so the new waypoint will be visible after creation
             if (minecraft.level != null) {
-                currentDimensionFilter = minecraft.level.dimension().location().toString();
+                currentDimensionFilter = minecraft.level.dimension().identifier().toString();
             }
             
             // Pre-fill coordinates
@@ -923,7 +925,7 @@ public class VoxelMapScreen extends Screen {
             return true;
         }
 
-        if (keyCode == 256) { // ESC
+        if (event.key() == 256) { // ESC
              if (showWaypointModal) {
                  if (isCreatingMode) {
                      // Go back to List
@@ -946,7 +948,7 @@ public class VoxelMapScreen extends Screen {
              }
         }
         
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(event);
     }
     
     // State tracking for auto-switching
@@ -966,7 +968,7 @@ public class VoxelMapScreen extends Screen {
             } else {
                 // Left Cave -> Sync with World Time
                 if (this.minecraft.level != null) {
-                    long time = this.minecraft.level.getDayTime() % 24000;
+                    long time = this.minecraft.level.getGameTime() % 24000;
                     ClientSettings.isNightMode = time >= 13000 && time <= 23000;
                 }
             }
@@ -976,12 +978,15 @@ public class VoxelMapScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
         float scale = getHudScale();
         double scaledX = mouseX / scale;
         double scaledY = mouseY / scale;
         
-        if (super.mouseClicked(scaledX, scaledY, button)) return true;
+        if (super.mouseClicked(event, doubleClick)) return true;
         
         int effectiveWidth = (int)(this.width / scale);
         int effectiveHeight = (int)(this.height / scale);
@@ -1041,7 +1046,7 @@ public class VoxelMapScreen extends Screen {
                  if (scaledX >= rightEdge - 150 && scaledX < rightEdge - 130) {
                      // Share
                      String msg = WaypointSharingHandler.createShareMessage(wp);
-                     this.minecraft.setScreen(new net.minecraft.client.gui.screens.ChatScreen(msg));
+                     this.minecraft.setScreen(new net.minecraft.client.gui.screens.ChatScreen(msg, false));
                      return true;
                  }
                  
@@ -1097,7 +1102,10 @@ public class VoxelMapScreen extends Screen {
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    public boolean mouseReleased(MouseButtonEvent event) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
         boolean handledByMap = isDraggingMap;
         isDraggingMap = false;
         float scale = getHudScale();
@@ -1110,7 +1118,7 @@ public class VoxelMapScreen extends Screen {
             }
             return true;
         }
-        return super.mouseReleased(mouseX / scale, mouseY / scale, button);
+        return super.mouseReleased(event);
     }
 
     private float getHudScale() {
@@ -1250,13 +1258,13 @@ public class VoxelMapScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
         // The map supplies its own background. Minecraft 1.21 blurs the current
         // framebuffer in Screen#renderBackground, so calling it again from
         // super.render() would blur the map and modal contents drawn below.
-        this.renderTransparentBackground(guiGraphics);
+        this.extractTransparentBackground(graphics);
         
-        PoseStack poseStack = guiGraphics.pose();
+        PoseStack poseStack = new PoseStack();
         poseStack.pushPose();
         
         // Center on screen
@@ -1270,8 +1278,8 @@ public class VoxelMapScreen extends Screen {
         }
         
         // Clear depth buffer to ensure UI draws cleanly on top of the 3D map
-        RenderSystem.depthMask(true);
-        RenderSystem.clear(256, Minecraft.ON_OSX);
+        // depthMask
+        // clear
         
         poseStack.popPose();
         
@@ -1298,7 +1306,7 @@ public class VoxelMapScreen extends Screen {
         int menuHeight = 35;
         int menuY = effectiveHeight - menuHeight;
         if (!showWaypointModal && !showSettingsModal) { 
-             guiGraphics.fill(0, menuY, effectiveWidth, effectiveHeight, 0x80000000); // Semi-transparent black
+             graphics.fill(0, menuY, effectiveWidth, effectiveHeight, 0x80000000); // Semi-transparent black
              
              // Draw Separator Pipe between Type toggles and Night Mode toggle
              int separatorX = 10 + (25 * 4); // 110
@@ -1306,7 +1314,7 @@ public class VoxelMapScreen extends Screen {
              int sepH = 25; // height of separator
              
              // Draw Pipe
-             guiGraphics.fill(separatorX, sepY, separatorX + 1, sepY + sepH, 0xFF888888); // Gray vertical line
+             graphics.fill(separatorX, sepY, separatorX + 1, sepY + sepH, 0xFF888888); // Gray vertical line
         }
         
         // Draw Settings Button (Top Left)
@@ -1321,9 +1329,9 @@ public class VoxelMapScreen extends Screen {
             int renderX = btnX - (renderSize - btnSize) / 2;
             int renderY = btnY - (renderSize - btnSize) / 2;
             
-            ResourceLocation settingsIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/settings.png");
-            RenderSystem.setShaderTexture(0, settingsIcon);
-            guiGraphics.blit(settingsIcon, renderX, renderY, 0, 0, renderSize, renderSize, renderSize, renderSize);
+            Identifier settingsIcon = Identifier.fromNamespaceAndPath("voxelview3d", "textures/settings.png");
+            // texture settingsIcon
+            graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, settingsIcon, renderX, renderY, 0, 0, renderSize, renderSize, renderSize, renderSize);
             
             // Draw Y value below Layer Slider
              int currentY = ClientMapData.getInstance().getCutY();
@@ -1334,23 +1342,23 @@ public class VoxelMapScreen extends Screen {
              int textX = sliderCenter - (textW / 2);
              // Slider Y=50, Height=50 -> Bottom=100. Text at 102.
              if (textX < 2) textX = 2;
-             guiGraphics.drawString(this.font, text, textX, 102, 0xFFFFFFFF);
+             graphics.text(this.font, text, textX, 102, 0xFFFFFFFF);
          }
         
         // Draw Zoom Level
         if (!showWaypointModal && !showSettingsModal) {
             // Draw Zoom Icon
-            ResourceLocation zoomIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/zoom.png");
-            RenderSystem.setShaderTexture(0, zoomIcon);
-            RenderSystem.enableBlend();
-            guiGraphics.blit(zoomIcon, effectiveWidth - 100, menuY + 6, 0, 0, 16, 16, 16, 16);
-            RenderSystem.disableBlend();
+            Identifier zoomIcon = Identifier.fromNamespaceAndPath("voxelview3d", "textures/zoom.png");
+            // texture zoomIcon
+            // enableBlend
+            graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, zoomIcon, effectiveWidth - 100, menuY + 6, 0, 0, 16, 16, 16, 16);
+            // disableBlend
 
             Component zoomText = Component.translatable("voxelview3d.zoom", String.format("%.1f", zoom));
-            guiGraphics.drawString(this.font, zoomText, effectiveWidth - 80, menuY + 10, 0xFFFFFFFF);
+            graphics.text(this.font, zoomText, effectiveWidth - 80, menuY + 10, 0xFFFFFFFF);
             
             // Draw Compass
-            // renderCompass(guiGraphics, effectiveWidth, effectiveHeight);
+            // renderCompass(graphics, effectiveWidth, effectiveHeight);
         }
 
         Minecraft mc = Minecraft.getInstance();
@@ -1367,8 +1375,8 @@ public class VoxelMapScreen extends Screen {
             if (mc.level != null) {
                 Holder<Biome> biomeHolder = mc.level.getBiome(player.blockPosition());
                 biomeName = biomeHolder.unwrapKey()
-                        .map(ResourceKey::location)
-                        .map(ResourceLocation::getPath)
+                        .map(ResourceKey::identifier)
+                        .map(Identifier::getPath)
                         .orElse(Component.translatable("voxelview3d.unknown").getString());
                 
                 // Capitalize
@@ -1378,32 +1386,32 @@ public class VoxelMapScreen extends Screen {
             int centerX = effectiveWidth / 2;
             int topMargin = 10;
             
-            guiGraphics.drawCenteredString(this.font, coords, centerX, topMargin, 0xFFFFFF);
-            guiGraphics.drawCenteredString(this.font, biomeName, centerX, topMargin + 12, 0xFFFFFF);
+            graphics.centeredText(this.font, coords, centerX, topMargin, 0xFFFFFF);
+            graphics.centeredText(this.font, biomeName, centerX, topMargin + 12, 0xFFFFFF);
         }
 
         if (selectedMapBlock != null && !showWaypointModal && !showSettingsModal) {
             selectedTeleportBtn.active = canUseTeleportCommand();
-            renderBlockSelectionMenu(guiGraphics);
+            renderBlockSelectionMenu(graphics);
         }
         
         // Render Modal if open
         if (showWaypointModal) {
-            renderWaypointModal(guiGraphics, scaledMouseX, scaledMouseY, effectiveWidth, effectiveHeight);
+            renderWaypointModal(graphics, scaledMouseX, scaledMouseY, effectiveWidth, effectiveHeight);
         }
         
         if (showSettingsModal) {
-            renderSettingsModal(guiGraphics, scaledMouseX, scaledMouseY, effectiveWidth, effectiveHeight);
+            renderSettingsModal(graphics, scaledMouseX, scaledMouseY, effectiveWidth, effectiveHeight);
         }
         
         // Render Widgets (Buttons, etc.)
-        super.render(guiGraphics, scaledMouseX, scaledMouseY, partialTick);
+        super.extractRenderState(graphics, scaledMouseX, scaledMouseY, a);
         
         // Draw icon on waypoints button handled by IconTextButton
         
         // Render Modal Overlays (Icons, Selection Borders) if open
         if (showWaypointModal && isCreatingMode) {
-            renderModalOverlays(guiGraphics, scaledMouseX, scaledMouseY);
+            renderModalOverlays(graphics, scaledMouseX, scaledMouseY);
         }
         
         poseStack.popPose();
@@ -1416,20 +1424,15 @@ public class VoxelMapScreen extends Screen {
                  tooltip = Component.translatable("voxelview3d.cave_mode");
              }
              
-             // Ensure Z-index is higher than menu (800)
-             poseStack.pushPose();
-             poseStack.translate(0, 0, 1000);
-             guiGraphics.renderTooltip(this.font, tooltip, mouseX, mouseY);
-             poseStack.popPose();
+             toggleNightMode.setTooltip(net.minecraft.client.gui.components.Tooltip.create(tooltip));
         }
     }
 
-    @Override
-    public void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        // Intentionally empty: render() draws the dim layer once before the map.
+    public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
+        // Intentionally empty: extractRenderState() draws the dim layer once before the map.
     }
     
-    private void renderCompass(GuiGraphics guiGraphics, int width, int height) {
+    private void renderCompass(GuiGraphicsExtractor graphics, int width, int height) {
         // Compass configuration
         int cx = width - 40;
         int cy = 40;
@@ -1437,7 +1440,7 @@ public class VoxelMapScreen extends Screen {
         
         float effectivePitch = ClientSettings.isTopDownView ? 90.0f : cameraPitch;
         
-        PoseStack poseStack = guiGraphics.pose();
+        PoseStack poseStack = new PoseStack();
         poseStack.pushPose();
         poseStack.translate(cx, cy, 0);
         
@@ -1447,10 +1450,10 @@ public class VoxelMapScreen extends Screen {
         poseStack.mulPose(Axis.YP.rotationDegrees(cameraYaw));
         
         // Draw Axis Lines
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        // setShader
         BufferBuilder buf;
-        RenderSystem.disableDepthTest(); // Draw on top
-        RenderSystem.lineWidth(4.0f); // Make lines thicker
+        // disableDepthTest // Draw on top
+        // lineWidth // Make lines thicker
         
         buf = Tesselator.getInstance().begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
         Matrix4f pose = poseStack.last().pose();
@@ -1471,19 +1474,19 @@ public class VoxelMapScreen extends Screen {
         buf.addVertex(pose, -len, 0, 0).setColor(50, 50, 150, 255);
 
         RenderBufferUtil.drawIfNotEmpty(buf);
-        RenderSystem.lineWidth(1.0f); // Reset line width
+        // lineWidth // Reset line width
         
         poseStack.popPose();
         
         // Draw labels N, S, E, W
         // N (-Z), S (+Z), E (+X), W (-X)
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 0, 0, -1, "N", 0xFFFF0000, effectivePitch);
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 0, 0, 1, "S", 0xFFAAAAAA, effectivePitch);
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, 1, 0, 0, "E", 0xFF0000FF, effectivePitch);
-        drawCompassLabel(guiGraphics, cx, cy, radius * 1.8f, -1, 0, 0, "W", 0xFFAAAAAA, effectivePitch);
+        drawCompassLabel(graphics, cx, cy, radius * 1.8f, 0, 0, -1, "N", 0xFFFF0000, effectivePitch);
+        drawCompassLabel(graphics, cx, cy, radius * 1.8f, 0, 0, 1, "S", 0xFFAAAAAA, effectivePitch);
+        drawCompassLabel(graphics, cx, cy, radius * 1.8f, 1, 0, 0, "E", 0xFF0000FF, effectivePitch);
+        drawCompassLabel(graphics, cx, cy, radius * 1.8f, -1, 0, 0, "W", 0xFFAAAAAA, effectivePitch);
     }
 
-    private void drawCompassLabel(GuiGraphics guiGraphics, int cx, int cy, float radius, float x, float y, float z, String text, int color, float pitch) {
+    private void drawCompassLabel(GuiGraphicsExtractor graphics, int cx, int cy, float radius, float x, float y, float z, String text, int color, float pitch) {
         Vector3f v = new Vector3f(x, y, z);
         
         // Apply rotations in order: Yaw then Pitch
@@ -1499,21 +1502,21 @@ public class VoxelMapScreen extends Screen {
         
         // Center text
         int w = this.font.width(text);
-        guiGraphics.drawString(this.font, text, sx - w / 2, sy - 4, color, false);
+        graphics.text(this.font, text, sx - w / 2, sy - 4, color, false);
     }
 
-    private void renderModalOverlays(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+    private void renderModalOverlays(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         // Draw colors over buttons
         for (int i = 0; i < colorButtons.size(); i++) {
             Button btn = colorButtons.get(i);
             int color = COLORS[i];
             
             // Fill inside button
-            guiGraphics.fill(btn.getX() + 2, btn.getY() + 2, btn.getX() + btn.getWidth() - 2, btn.getY() + btn.getHeight() - 2, color | 0xFF000000);
+            graphics.fill(btn.getX() + 2, btn.getY() + 2, btn.getX() + btn.getWidth() - 2, btn.getY() + btn.getHeight() - 2, color | 0xFF000000);
             
             // Selection border
             if (selectedColor == color) {
-                guiGraphics.renderOutline(btn.getX(), btn.getY(), btn.getWidth(), btn.getHeight(), 0xFFFFFFFF);
+                graphics.outline(btn.getX(), btn.getY(), btn.getWidth(), btn.getHeight(), 0xFFFFFFFF);
             }
         }
         
@@ -1523,57 +1526,57 @@ public class VoxelMapScreen extends Screen {
             String iconName = "icon" + (i + 1);
             
             // Draw Icon
-            ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + iconName + ".png");
+            Identifier iconLoc = Identifier.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + iconName + ".png");
             
             float r = ((selectedColor >> 16) & 0xFF) / 255.0f;
             float g = ((selectedColor >> 8) & 0xFF) / 255.0f;
             float b = (selectedColor & 0xFF) / 255.0f;
             
-            RenderSystem.enableBlend();
-            RenderSystem.setShaderColor(r, g, b, 1.0F);
-            guiGraphics.blit(iconLoc, btn.getX() + 2, btn.getY() + 2, 0, 0, 16, 16, 16, 16);
-            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-            RenderSystem.disableBlend();
+            // enableBlend
+            // setShaderColor
+            graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, iconLoc, btn.getX() + 2, btn.getY() + 2, 0, 0, 16, 16, 16, 16);
+            // setShaderColor
+            // disableBlend
             
             if (selectedIcon.equals(iconName)) {
-                guiGraphics.renderOutline(btn.getX(), btn.getY(), btn.getWidth(), btn.getHeight(), 0xFFFFFFFF);
+                graphics.outline(btn.getX(), btn.getY(), btn.getWidth(), btn.getHeight(), 0xFFFFFFFF);
             }
         }
     }
     
-    private void renderSettingsModal(GuiGraphics guiGraphics, int mouseX, int mouseY, int width, int height) {
+    private void renderSettingsModal(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int width, int height) {
         int settingsW = 200;
         int settingsH = 270;
         int settingsX = (width - settingsW) / 2;
         int settingsY = (height - settingsH) / 2;
         
         // Background
-        guiGraphics.fill(settingsX, settingsY, settingsX + settingsW, settingsY + settingsH, 0xF0101010);
+        graphics.fill(settingsX, settingsY, settingsX + settingsW, settingsY + settingsH, 0xF0101010);
         
         // Title Bar
-        guiGraphics.fill(settingsX, settingsY, settingsX + settingsW, settingsY + 40, 0xFF000000);
+        graphics.fill(settingsX, settingsY, settingsX + settingsW, settingsY + 40, 0xFF000000);
         
         // Border
-        guiGraphics.renderOutline(settingsX, settingsY, settingsW, settingsH, 0xFF404040);
+        graphics.outline(settingsX, settingsY, settingsW, settingsH, 0xFF404040);
         
         // Title
-        guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.settings.title"), settingsX + settingsW / 2, settingsY + 15, 0xFFFFFFFF);
+        graphics.centeredText(this.font, Component.translatable("voxelview3d.settings.title"), settingsX + settingsW / 2, settingsY + 15, 0xFFFFFFFF);
     }
 
-    private void renderBlockSelectionMenu(GuiGraphics guiGraphics) {
+    private void renderBlockSelectionMenu(GuiGraphicsExtractor graphics) {
         int menuWidth = 190;
         int menuHeight = 48;
-        guiGraphics.fill(blockMenuX, blockMenuY, blockMenuX + menuWidth,
+        graphics.fill(blockMenuX, blockMenuY, blockMenuX + menuWidth,
                 blockMenuY + menuHeight, 0xE0101010);
-        guiGraphics.renderOutline(blockMenuX, blockMenuY, menuWidth, menuHeight, 0xFF00FFFF);
+        graphics.outline(blockMenuX, blockMenuY, menuWidth, menuHeight, 0xFF00FFFF);
 
         Component coordinates = Component.translatable("voxelview3d.selection.block",
                 selectedMapBlock.getX(), selectedMapBlock.getY(), selectedMapBlock.getZ());
-        guiGraphics.drawCenteredString(font, coordinates, blockMenuX + menuWidth / 2,
+        graphics.centeredText(font, coordinates, blockMenuX + menuWidth / 2,
                 blockMenuY + 7, 0xFFFFFFFF);
     }
 
-    private void renderWaypointModal(GuiGraphics guiGraphics, int mouseX, int mouseY, int width, int height) {
+    private void renderWaypointModal(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int width, int height) {
         // Dynamic Full Screen Modal
         int margin = 10;
         int modalX = margin;
@@ -1582,16 +1585,16 @@ public class VoxelMapScreen extends Screen {
         int modalH = height - (margin * 2);
         
         // Background (Almost solid dark)
-        guiGraphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xF0101010);
+        graphics.fill(modalX, modalY, modalX + modalW, modalY + modalH, 0xF0101010);
         
         // Title bar (Solid black)
-        guiGraphics.fill(modalX, modalY, modalX + modalW, modalY + 30, 0xFF000000); 
+        graphics.fill(modalX, modalY, modalX + modalW, modalY + 30, 0xFF000000); 
         
         // Border
-        guiGraphics.renderOutline(modalX, modalY, modalW, modalH, 0xFF404040);
+        graphics.outline(modalX, modalY, modalW, modalH, 0xFF404040);
         
         Component title = isCreatingMode ? (editingWaypoint != null ? Component.translatable("voxelview3d.waypoint.edit_title") : Component.translatable("voxelview3d.waypoint.create_title")) : Component.translatable("voxelview3d.waypoint.list_title");
-        guiGraphics.drawCenteredString(this.font, title, width / 2, modalY + 11, 0xFFFFFFFF);
+        graphics.centeredText(this.font, title, width / 2, modalY + 11, 0xFFFFFFFF);
         
         if (isCreatingMode) {
             // Render labels for create mode
@@ -1601,12 +1604,12 @@ public class VoxelMapScreen extends Screen {
             int totalCoordW = (coordW * 3) + (coordGap * 2);
             int startCoordX = centerX - (totalCoordW / 2);
             
-            guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.waypoint.x"), startCoordX + (coordW/2), modalY + 55, 0xFFAAAAAA);
-            guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.waypoint.y"), startCoordX + coordW + coordGap + (coordW/2), modalY + 55, 0xFFAAAAAA);
-            guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.waypoint.z"), startCoordX + (coordW + coordGap) * 2 + (coordW/2), modalY + 55, 0xFFAAAAAA);
+            graphics.centeredText(this.font, Component.translatable("voxelview3d.waypoint.x"), startCoordX + (coordW/2), modalY + 55, 0xFFAAAAAA);
+            graphics.centeredText(this.font, Component.translatable("voxelview3d.waypoint.y"), startCoordX + coordW + coordGap + (coordW/2), modalY + 55, 0xFFAAAAAA);
+            graphics.centeredText(this.font, Component.translatable("voxelview3d.waypoint.z"), startCoordX + (coordW + coordGap) * 2 + (coordW/2), modalY + 55, 0xFFAAAAAA);
             
-            guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.waypoint.color"), centerX, modalY + 95, 0xFFAAAAAA);
-            guiGraphics.drawCenteredString(this.font, Component.translatable("voxelview3d.waypoint.icon"), centerX, modalY + 135, 0xFFAAAAAA);
+            graphics.centeredText(this.font, Component.translatable("voxelview3d.waypoint.color"), centerX, modalY + 95, 0xFFAAAAAA);
+            graphics.centeredText(this.font, Component.translatable("voxelview3d.waypoint.icon"), centerX, modalY + 135, 0xFFAAAAAA);
             
         } else {
             // Render List
@@ -1619,7 +1622,7 @@ public class VoxelMapScreen extends Screen {
             
             // Enable Scissor to clip content
             float scale = getHudScale();
-            guiGraphics.enableScissor((int)(listX * scale), (int)(listY * scale), (int)((listX + listWidth) * scale), (int)((listY + listHeight) * scale));
+            graphics.enableScissor((int)(listX * scale), (int)(listY * scale), (int)((listX + listWidth) * scale), (int)((listY + listHeight) * scale));
             
             List<ClientSettings.Waypoint> waypoints = getFilteredWaypoints();
             
@@ -1632,35 +1635,35 @@ public class VoxelMapScreen extends Screen {
                  
                  // Row Background (alternate)
                  if (i % 2 == 0) {
-                     guiGraphics.fill(listX, rowY, listX + listWidth, rowY + itemHeight, 0x20FFFFFF);
+                     graphics.fill(listX, rowY, listX + listWidth, rowY + itemHeight, 0x20FFFFFF);
                  }
                  
                  // Hover effect
                  if (mouseX >= listX && mouseX <= listX + listWidth && mouseY >= rowY && mouseY < rowY + itemHeight) {
-                     guiGraphics.fill(listX, rowY, listX + listWidth, rowY + itemHeight, 0x10FFFFFF);
+                     graphics.fill(listX, rowY, listX + listWidth, rowY + itemHeight, 0x10FFFFFF);
                  }
                  
                  // Icon
-                 ResourceLocation iconLoc = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
+                 Identifier iconLoc = Identifier.fromNamespaceAndPath("voxelview3d", "textures/waypoints/" + wp.iconName + ".png");
                  
                  float r = ((wp.color >> 16) & 0xFF) / 255.0f;
                  float g = ((wp.color >> 8) & 0xFF) / 255.0f;
                  float b = (wp.color & 0xFF) / 255.0f;
                  
-                 RenderSystem.enableBlend();
-                 RenderSystem.setShaderColor(r, g, b, 1.0F);
-                 guiGraphics.blit(iconLoc, listX + 5, rowY + 5, 0, 0, 20, 20, 20, 20);
-                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-                 RenderSystem.disableBlend();
+                 // enableBlend
+                 // setShaderColor
+                 graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, iconLoc, listX + 5, rowY + 5, 0, 0, 20, 20, 20, 20);
+                 // setShaderColor
+                 // disableBlend
                  
                  // Name
-                 guiGraphics.drawString(this.font, wp.name, listX + 35, rowY + 5, wp.color);
+                 graphics.text(this.font, wp.name, listX + 35, rowY + 5, wp.color);
                  
                  // Distance
                  if (this.minecraft.player != null) {
                      double d = Math.sqrt(this.minecraft.player.distanceToSqr(wp.x + 0.5, wp.y + 0.5, wp.z + 0.5));
                      String distStr = String.format("%.1fm", d);
-                     guiGraphics.drawString(this.font, distStr, listX + 35, rowY + 15, 0xFF888888);
+                     graphics.text(this.font, distStr, listX + 35, rowY + 15, 0xFF888888);
                  }
                  
                  // Buttons: [Edit] [Eye] [TP] [Trash] (Aligned Right)
@@ -1669,55 +1672,55 @@ public class VoxelMapScreen extends Screen {
                  // Coords (Before buttons)
                  String coords = String.format("[%d, %d, %d]", wp.x, wp.y, wp.z);
                  int coordsW = this.font.width(coords);
-                 guiGraphics.drawString(this.font, coords, rightEdge - 170 - coordsW, rowY + 11, 0xFFAAAAAA);
+                 graphics.text(this.font, coords, rightEdge - 170 - coordsW, rowY + 11, 0xFFAAAAAA);
                  
                  // Share
                  boolean shareHover = mouseX >= rightEdge - 150 && mouseX < rightEdge - 130 && mouseY >= rowY && mouseY < rowY + itemHeight;
-                 guiGraphics.fill(rightEdge - 150, rowY + 5, rightEdge - 130, rowY + 25, shareHover ? 0xFF606060 : 0xFF404040);
-                 ResourceLocation shareIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/share.png");
-                 RenderSystem.setShaderTexture(0, shareIcon);
-                 RenderSystem.enableBlend();
-                 guiGraphics.blit(shareIcon, rightEdge - 148, rowY + 7, 0, 0, 16, 16, 16, 16);
-                 RenderSystem.disableBlend();
+                 graphics.fill(rightEdge - 150, rowY + 5, rightEdge - 130, rowY + 25, shareHover ? 0xFF606060 : 0xFF404040);
+                 Identifier shareIcon = Identifier.fromNamespaceAndPath("voxelview3d", "textures/share.png");
+                 // texture shareIcon
+                 // enableBlend
+                 graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, shareIcon, rightEdge - 148, rowY + 7, 0, 0, 16, 16, 16, 16);
+                 // disableBlend
                  
                  // Edit
                  boolean editHover = mouseX >= rightEdge - 120 && mouseX < rightEdge - 100 && mouseY >= rowY && mouseY < rowY + itemHeight;
-                 guiGraphics.fill(rightEdge - 120, rowY + 5, rightEdge - 100, rowY + 25, editHover ? 0xFF606060 : 0xFF404040);
-                 ResourceLocation editIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/edit.png");
-                 RenderSystem.setShaderTexture(0, editIcon);
-                 RenderSystem.enableBlend();
-                 guiGraphics.blit(editIcon, rightEdge - 118, rowY + 7, 0, 0, 16, 16, 16, 16);
-                 RenderSystem.disableBlend();
+                 graphics.fill(rightEdge - 120, rowY + 5, rightEdge - 100, rowY + 25, editHover ? 0xFF606060 : 0xFF404040);
+                 Identifier editIcon = Identifier.fromNamespaceAndPath("voxelview3d", "textures/edit.png");
+                 // texture editIcon
+                 // enableBlend
+                 graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, editIcon, rightEdge - 118, rowY + 7, 0, 0, 16, 16, 16, 16);
+                 // disableBlend
                  
                  // Eye (Visibility)
                  boolean eyeHover = mouseX >= rightEdge - 90 && mouseX < rightEdge - 70 && mouseY >= rowY && mouseY < rowY + itemHeight;
-                 guiGraphics.fill(rightEdge - 90, rowY + 5, rightEdge - 70, rowY + 25, eyeHover ? 0xFF606060 : 0xFF404040);
-                 ResourceLocation eyeIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", "textures/" + (wp.visible ? "nothide.png" : "hide.png"));
-                 RenderSystem.setShaderTexture(0, eyeIcon);
-                 RenderSystem.enableBlend();
-                 guiGraphics.blit(eyeIcon, rightEdge - 88, rowY + 7, 0, 0, 16, 16, 16, 16);
-                 RenderSystem.disableBlend();
+                 graphics.fill(rightEdge - 90, rowY + 5, rightEdge - 70, rowY + 25, eyeHover ? 0xFF606060 : 0xFF404040);
+                 Identifier eyeIcon = Identifier.fromNamespaceAndPath("voxelview3d", "textures/" + (wp.visible ? "nothide.png" : "hide.png"));
+                 // texture eyeIcon
+                 // enableBlend
+                 graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, eyeIcon, rightEdge - 88, rowY + 7, 0, 0, 16, 16, 16, 16);
+                 // disableBlend
                  
                  // TP
                  boolean canTeleport = canUseTeleportCommand();
                  boolean tpHover = canTeleport && mouseX >= rightEdge - 60 && mouseX < rightEdge - 40
                          && mouseY >= rowY && mouseY < rowY + itemHeight;
                  int tpBackground = canTeleport ? (tpHover ? 0xFF606060 : 0xFF404040) : 0xFF202020;
-                 guiGraphics.fill(rightEdge - 60, rowY + 5, rightEdge - 40, rowY + 25, tpBackground);
-                 guiGraphics.drawCenteredString(this.font, "/TP", rightEdge - 50, rowY + 11,
+                 graphics.fill(rightEdge - 60, rowY + 5, rightEdge - 40, rowY + 25, tpBackground);
+                 graphics.centeredText(this.font, "/TP", rightEdge - 50, rowY + 11,
                          canTeleport ? 0xFFFFFFFF : 0xFF777777);
                  
                  // Trash
                  boolean trashHover = mouseX >= rightEdge - 30 && mouseX < rightEdge - 10 && mouseY >= rowY && mouseY < rowY + itemHeight;
-                 guiGraphics.fill(rightEdge - 30, rowY + 5, rightEdge - 10, rowY + 25, trashHover ? 0xFF606060 : 0xFF404040);
-                 ResourceLocation deleteIcon = ResourceLocation.fromNamespaceAndPath("voxelview3d", trashHover ? "textures/deletehover.png" : "textures/delete.png");
-                 RenderSystem.setShaderTexture(0, deleteIcon);
-                 RenderSystem.enableBlend();
-                 guiGraphics.blit(deleteIcon, rightEdge - 28, rowY + 7, 0, 0, 16, 16, 16, 16);
-                 RenderSystem.disableBlend();
+                 graphics.fill(rightEdge - 30, rowY + 5, rightEdge - 10, rowY + 25, trashHover ? 0xFF606060 : 0xFF404040);
+                 Identifier deleteIcon = Identifier.fromNamespaceAndPath("voxelview3d", trashHover ? "textures/deletehover.png" : "textures/delete.png");
+                 // texture deleteIcon
+                 // enableBlend
+                 graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, deleteIcon, rightEdge - 28, rowY + 7, 0, 0, 16, 16, 16, 16);
+                 // disableBlend
             }
             
-            guiGraphics.disableScissor();
+            graphics.disableScissor();
             
             // Scrollbar
             int totalContentHeight = waypoints.size() * itemHeight;
@@ -1730,8 +1733,8 @@ public class VoxelMapScreen extends Screen {
                 int maxScroll = totalContentHeight - listHeight;
                 int scrollY = listY + (int)((scrollOffset / maxScroll) * (listHeight - scrollBarH));
                 
-                guiGraphics.fill(scrollBarX, listY, scrollBarX + scrollBarW, listY + listHeight, 0x80000000); // Track
-                guiGraphics.fill(scrollBarX, scrollY, scrollBarX + scrollBarW, scrollY + scrollBarH, 0xFF808080); // Thumb
+                graphics.fill(scrollBarX, listY, scrollBarX + scrollBarW, listY + listHeight, 0x80000000); // Track
+                graphics.fill(scrollBarX, scrollY, scrollBarX + scrollBarW, scrollY + scrollBarH, 0xFF808080); // Thumb
             }
         }
     }
@@ -1742,9 +1745,12 @@ public class VoxelMapScreen extends Screen {
     }
     
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
         float scale = getHudScale();
-        if (super.mouseDragged(mouseX / scale, mouseY / scale, button, dragX / scale, dragY / scale)) return true;
+        if (super.mouseDragged(event, dragX / scale, dragY / scale)) return true;
         
         if (isDraggingMap) {
             if (!mapDragMoved
@@ -1850,12 +1856,12 @@ public class VoxelMapScreen extends Screen {
         return false;
     }
 
-    private static class ImageToggleButton extends Button {
-        protected final ResourceLocation textureOn;
-        protected final ResourceLocation textureOff;
+    private static class ImageToggleButton extends Button.Plain {
+        protected final Identifier textureOn;
+        protected final Identifier textureOff;
         protected final Supplier<Boolean> stateSupplier;
 
-        public ImageToggleButton(int x, int y, int width, int height, ResourceLocation textureOn, ResourceLocation textureOff, Supplier<Boolean> stateSupplier, OnPress onPress) {
+        public ImageToggleButton(int x, int y, int width, int height, Identifier textureOn, Identifier textureOff, Supplier<Boolean> stateSupplier, OnPress onPress) {
             super(x, y, width, height, Component.empty(), onPress, DEFAULT_NARRATION);
             this.textureOn = textureOn;
             this.textureOff = textureOff;
@@ -1863,39 +1869,39 @@ public class VoxelMapScreen extends Screen {
         }
 
         @Override
-        public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
             boolean isOn = stateSupplier.get();
-            ResourceLocation texture = isOn ? textureOn : textureOff;
+            Identifier texture = isOn ? textureOn : textureOff;
             
-            RenderSystem.setShaderTexture(0, texture);
-            RenderSystem.enableBlend();
+            // texture texture
+            // enableBlend
             
             // Draw background if hovered
             if (this.isHovered) {
-                 guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x40FFFFFF);
+                 graphics.fill(getX(), getY(), getX() + width, getY() + height, 0x40FFFFFF);
             }
             
             // Draw icon centered
             int iconSize = width - 4;
-            guiGraphics.blit(texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
-            RenderSystem.disableBlend();
+            graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
+            // disableBlend
         }
     }
 
-    private static class IconTextButton extends Button {
-        private final ResourceLocation icon;
+    private static class IconTextButton extends Button.Plain {
+        private final Identifier icon;
 
-        public IconTextButton(int x, int y, int width, int height, Component message, ResourceLocation icon, OnPress onPress) {
+        public IconTextButton(int x, int y, int width, int height, Component message, Identifier icon, OnPress onPress) {
             super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
             this.icon = icon;
         }
 
         @Override
-        public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
             // Draw background
             int color = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
-            guiGraphics.fill(getX(), getY(), getX() + width, getY() + height, 0x80000000); // Semi-transparent black
-            guiGraphics.renderOutline(getX(), getY(), width, height, color); // Border
+            graphics.fill(getX(), getY(), getX() + width, getY() + height, 0x80000000); // Semi-transparent black
+            graphics.outline(getX(), getY(), width, height, color); // Border
             
             // Calculate positions to center content (Icon + Text)
             Font font = Minecraft.getInstance().font;
@@ -1909,13 +1915,13 @@ public class VoxelMapScreen extends Screen {
             int textY = getY() + (height - 8) / 2;
             
             // Draw Icon
-            RenderSystem.setShaderTexture(0, icon);
-            RenderSystem.enableBlend();
-            guiGraphics.blit(icon, contentX, iconY, 0, 0, 16, 16, 16, 16);
-            RenderSystem.disableBlend();
+            // texture icon
+            // enableBlend
+            graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, icon, contentX, iconY, 0, 0, 16, 16, 16, 16);
+            // disableBlend
             
             // Draw Text
-            guiGraphics.drawString(font, getMessage(), contentX + iconWidth + gap, textY, color);
+            graphics.text(font, getMessage(), contentX + iconWidth + gap, textY, color);
         }
     }
     
@@ -1943,7 +1949,7 @@ public class VoxelMapScreen extends Screen {
         
         // Always include current dimension if available and not already added
         if (minecraft.level != null) {
-            String current = minecraft.level.dimension().location().toString();
+            String current = minecraft.level.dimension().identifier().toString();
             if (!dims.contains(current)) {
                 dims.add(current);
             }
@@ -1974,10 +1980,10 @@ public class VoxelMapScreen extends Screen {
         return 3;
     }
     
-    private ResourceLocation getDimensionIcon(String dim) {
-        if (dim.contains("nether")) return ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/netherrack.png");
-        if (dim.contains("end") && !dim.contains("render")) return ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/end_stone.png");
-        return ResourceLocation.fromNamespaceAndPath("minecraft", "textures/block/grass_block_side.png");
+    private Identifier getDimensionIcon(String dim) {
+        if (dim.contains("nether")) return Identifier.fromNamespaceAndPath("minecraft", "textures/block/netherrack.png");
+        if (dim.contains("end") && !dim.contains("render")) return Identifier.fromNamespaceAndPath("minecraft", "textures/block/end_stone.png");
+        return Identifier.fromNamespaceAndPath("minecraft", "textures/block/grass_block_side.png");
     }
 
     private class LayerSlider extends AbstractWidget {
@@ -2027,7 +2033,7 @@ public class VoxelMapScreen extends Screen {
         }
 
         @Override
-        public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        protected void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
             // Update value if player moved vertically (User Request)
             if (minecraft.player != null) {
                 int currentPlayerY = minecraft.player.getBlockY();
@@ -2053,9 +2059,9 @@ public class VoxelMapScreen extends Screen {
             // Draw Background (Track)
             // Center track (4px wide)
             int centerX = getX() + (width/2);
-            guiGraphics.fill(centerX - 2, getY(), centerX + 2, getY() + height, 0x80000000);
+            graphics.fill(centerX - 2, getY(), centerX + 2, getY() + height, 0x80000000);
             // Border for track
-            guiGraphics.renderOutline(centerX - 2, getY(), 4, height, 0xFF404040);
+            graphics.outline(centerX - 2, getY(), 4, height, 0xFF404040);
             
             // Draw Handle
             // Value 1.0 is TOP (MaxY), Value 0.0 is BOTTOM (MinY).
@@ -2075,15 +2081,15 @@ public class VoxelMapScreen extends Screen {
                               mouseY >= handleY && mouseY <= handleY + handleH;
             
             // Fill Handle
-            guiGraphics.fill(handleX, handleY, handleX + handleW, handleY + handleH, hovered ? 0xFFFFFFFF : 0xFFAAAAAA);
+            graphics.fill(handleX, handleY, handleX + handleW, handleY + handleH, hovered ? 0xFFFFFFFF : 0xFFAAAAAA);
             // Border Handle
-            guiGraphics.renderOutline(handleX, handleY, handleW, handleH, 0xFF000000);
+            graphics.outline(handleX, handleY, handleW, handleH, 0xFF000000);
             
             // Draw current Y value tooltip if hovered over widget
             if (isHovered) {
                 int currentY = min + (int)(value * (max - min));
                 Component tooltip = Component.literal("Y: " + currentY);
-                guiGraphics.renderTooltip(font, tooltip, mouseX, mouseY);
+                this.setTooltip(net.minecraft.client.gui.components.Tooltip.create(tooltip));
             }
         }
 
@@ -2093,13 +2099,13 @@ public class VoxelMapScreen extends Screen {
         }
         
         @Override
-        public void onClick(double mouseX, double mouseY) {
-            updateValue(mouseY);
+        public void onClick(MouseButtonEvent event, boolean doubleClick) {
+            updateValue(event.y());
         }
         
         @Override
-        protected void onDrag(double mouseX, double mouseY, double dragX, double dragY) {
-            updateValue(mouseY);
+        protected void onDrag(MouseButtonEvent event, double dx, double dy) {
+            updateValue(event.y());
         }
         
         private void updateValue(double mouseY) {

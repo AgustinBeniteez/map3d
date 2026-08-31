@@ -6,7 +6,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.eventbus.api.listener.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 import java.util.ArrayDeque;
@@ -24,8 +24,12 @@ import com.agustinbenitez.voxelview3d.VoxelView3D;
 import com.agustinbenitez.voxelview3d.client.ClientSettings;
 import com.agustinbenitez.voxelview3d.client.VoxelMapScreen;
 
-@Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
+
 public class WorldHandler {
+    public static void registerEvents() {
+        net.minecraftforge.event.TickEvent.ClientTickEvent.Post.BUS.addListener(WorldHandler::onClientTick);
+    }
+
     private static final int QUEUE_REFRESH_INTERVAL_TICKS = 20;
     private static final int SCAN_INTERVAL_TICKS = 2;
     private static final int MAX_STALE_CHUNKS_PER_REFRESH = 2;
@@ -52,10 +56,8 @@ public class WorldHandler {
         scanTickCounter = SCAN_INTERVAL_TICKS;
     }
 
-    @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
-
+    
+    public static void onClientTick(TickEvent.ClientTickEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         boolean mapIsOpen = mc.screen instanceof VoxelMapScreen;
 
@@ -77,7 +79,7 @@ public class WorldHandler {
 
         boolean dimensionChanged = lastDimension != null && !lastDimension.equals(currentDimension);
         boolean movedSignificantly = lastPos != null
-                && (Math.abs(currentPos.x - lastPos.x) > 2 || Math.abs(currentPos.z - lastPos.z) > 2);
+                && (Math.abs(currentPos.x() - lastPos.x()) > 2 || Math.abs(currentPos.z() - lastPos.z()) > 2);
 
         if (dimensionChanged) {
             ChunkScanner.clear();
@@ -89,7 +91,7 @@ public class WorldHandler {
             clearScanQueue();
             refreshTickCounter = QUEUE_REFRESH_INTERVAL_TICKS;
 
-            if (Math.abs(currentPos.x - lastPos.x) > 10 || Math.abs(currentPos.z - lastPos.z) > 10) {
+            if (Math.abs(currentPos.x() - lastPos.x()) > 10 || Math.abs(currentPos.z() - lastPos.z()) > 10) {
                 ChunkScanner.clear();
                 lastScanTicks.clear();
             }
@@ -119,14 +121,14 @@ public class WorldHandler {
         long currentTick = mc.level.getGameTime();
         
         ChunkScanner.prune(playerPos, radius + 2);
-        lastScanTicks.keySet().removeIf(key -> isOutsideRadius(new ChunkPos(key), playerPos, radius + 2));
+        lastScanTicks.keySet().removeIf(key -> isOutsideRadius(ChunkPos.unpack(key), playerPos, radius + 2));
         
         List<ChunkPos> missingChunks = new ArrayList<>();
         List<ChunkPos> staleChunks = new ArrayList<>();
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                ChunkPos pos = new ChunkPos(playerPos.x + x, playerPos.z + z);
-                long key = pos.toLong();
+                ChunkPos pos = new ChunkPos(playerPos.x() + x, playerPos.z() + z);
+                long key = ChunkPos.pack(pos.x(), pos.z());
                 if (queuedChunks.contains(key)) continue;
 
                 Long lastScanTick = lastScanTicks.get(key);
@@ -144,7 +146,7 @@ public class WorldHandler {
         // Refresh only a small number of old chunks per second. This keeps block
         // changes visible without continuously rescanning the entire map.
         staleChunks.sort(Comparator
-                .comparingLong((ChunkPos pos) -> lastScanTicks.getOrDefault(pos.toLong(), Long.MIN_VALUE))
+                .comparingLong((ChunkPos pos) -> lastScanTicks.getOrDefault(ChunkPos.pack(pos.x(), pos.z()), Long.MIN_VALUE))
                 .thenComparingInt(pos -> distSq(pos, playerPos)));
         for (int i = 0; i < Math.min(MAX_STALE_CHUNKS_PER_REFRESH, staleChunks.size()); i++) {
             enqueue(staleChunks.get(i));
@@ -152,17 +154,17 @@ public class WorldHandler {
     }
     
     private static int distSq(ChunkPos c1, ChunkPos c2) {
-        int dx = c1.x - c2.x;
-        int dz = c1.z - c2.z;
+        int dx = c1.x() - c2.x();
+        int dz = c1.z() - c2.z();
         return dx * dx + dz * dz;
     }
 
     private static boolean isOutsideRadius(ChunkPos pos, ChunkPos center, int radius) {
-        return Math.abs(pos.x - center.x) > radius || Math.abs(pos.z - center.z) > radius;
+        return Math.abs(pos.x() - center.x()) > radius || Math.abs(pos.z() - center.z()) > radius;
     }
 
     private static void enqueue(ChunkPos pos) {
-        if (queuedChunks.add(pos.toLong())) scanQueue.add(pos);
+        if (queuedChunks.add(ChunkPos.pack(pos.x(), pos.z()))) scanQueue.add(pos);
     }
 
     private static void clearScanQueue() {
@@ -177,12 +179,12 @@ public class WorldHandler {
         for (int i = 0; i < chunksToScan; i++) {
             ChunkPos pos = scanQueue.poll();
             if (pos == null) break;
-            queuedChunks.remove(pos.toLong());
+            queuedChunks.remove(ChunkPos.pack(pos.x(), pos.z()));
             
-            LevelChunk chunk = (LevelChunk) mc.level.getChunk(pos.x, pos.z, ChunkStatus.FULL, false);
+            LevelChunk chunk = (LevelChunk) mc.level.getChunk(pos.x(), pos.z(), ChunkStatus.FULL, false);
             if (chunk != null) {
                 ChunkScanner.scanChunk(chunk);
-                lastScanTicks.put(pos.toLong(), mc.level.getGameTime());
+                lastScanTicks.put(ChunkPos.pack(pos.x(), pos.z()), mc.level.getGameTime());
             }
         }
     }
