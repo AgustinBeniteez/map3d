@@ -57,11 +57,11 @@ public final class CompassHud {
         // 1. Draw Background
         guiGraphics.fill(centerX - COMPASS_WIDTH / 2, topY, centerX + COMPASS_WIDTH / 2, topY + COMPASS_HEIGHT, 0x80000000);
         
-        double scale = mc.getWindow().getGuiScale();
-        int scissorX = (int)((centerX - (COMPASS_WIDTH / 2.0 * hudScale)) * scale);
-        int scissorY = (int)((mc.getWindow().getHeight() - ((topY + (COMPASS_HEIGHT * hudScale))) * scale));
-        int scissorW = (int)((COMPASS_WIDTH * hudScale) * scale);
-        int scissorH = (int)((COMPASS_HEIGHT * hudScale) * scale);
+        // In MC 26.1, enableScissor expects GUI coordinates, not raw pixel window coordinates!
+        int scissorX = centerX - COMPASS_WIDTH / 2;
+        int scissorY = topY;
+        int scissorW = COMPASS_WIDTH;
+        int scissorH = COMPASS_HEIGHT;
         
         guiGraphics.enableScissor(scissorX, scissorY, scissorX + scissorW, scissorY + scissorH);
 

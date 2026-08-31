@@ -68,14 +68,16 @@ public class WorldHandler {
             return;
         }
 
+        ChunkPos currentPos = mc.player.chunkPosition();
+
         if (!mapWasOpen) {
             mapWasOpen = true;
             refreshTickCounter = QUEUE_REFRESH_INTERVAL_TICKS;
             scanTickCounter = SCAN_INTERVAL_TICKS;
+            initialScan(mc, currentPos, 3);
         }
 
         var currentDimension = mc.level.dimension();
-        ChunkPos currentPos = mc.player.chunkPosition();
 
         boolean dimensionChanged = lastDimension != null && !lastDimension.equals(currentDimension);
         boolean movedSignificantly = lastPos != null
@@ -185,6 +187,21 @@ public class WorldHandler {
             if (chunk != null) {
                 ChunkScanner.scanChunk(chunk);
                 lastScanTicks.put(ChunkPos.pack(pos.x(), pos.z()), mc.level.getGameTime());
+            }
+        }
+    }
+
+    private static void initialScan(Minecraft mc, ChunkPos center, int radius) {
+        if (mc.level == null) return;
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                int cx = center.x() + dx;
+                int cz = center.z() + dz;
+                LevelChunk chunk = (LevelChunk) mc.level.getChunk(cx, cz, ChunkStatus.FULL, false);
+                if (chunk != null) {
+                    ChunkScanner.scanChunk(chunk);
+                    lastScanTicks.put(ChunkPos.pack(cx, cz), mc.level.getGameTime());
+                }
             }
         }
     }

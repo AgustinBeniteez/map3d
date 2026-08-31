@@ -1380,32 +1380,7 @@ public class VoxelMapRenderer {
         int clippedMaxY = Math.min(maxY, chunkData.maxBlockY);
         if (clippedMinY > clippedMaxY) return false;
 
-        float x0 = (float)(pos.getMinBlockX() - centerX);
-        float x1 = x0 + 16.0f;
-        float y0 = (float)(clippedMinY - centerY);
-        float y1 = (float)(clippedMaxY + 1.0 - centerY);
-        float z0 = (float)(pos.getMinBlockZ() - centerZ);
-        float z1 = z0 + 16.0f;
-
-        boolean allLeft = true;
-        boolean allRight = true;
-        boolean allAbove = true;
-        boolean allBelow = true;
-
-        for (int corner = 0; corner < 8; corner++) {
-            float x = (corner & 1) == 0 ? x0 : x1;
-            float y = (corner & 2) == 0 ? y0 : y1;
-            float z = (corner & 4) == 0 ? z0 : z1;
-            float screenX = pose.m00() * x + pose.m10() * y + pose.m20() * z + pose.m30();
-            float screenY = pose.m01() * x + pose.m11() * y + pose.m21() * z + pose.m31();
-
-            allLeft &= screenX < -VIEWPORT_CULL_MARGIN;
-            allRight &= screenX > viewportWidth + VIEWPORT_CULL_MARGIN;
-            allAbove &= screenY < -VIEWPORT_CULL_MARGIN;
-            allBelow &= screenY > viewportHeight + VIEWPORT_CULL_MARGIN;
-        }
-
-        return !(allLeft || allRight || allAbove || allBelow);
+        return true;
     }
 
     private static boolean isNormallyColorRendered(int renderType) {

@@ -986,7 +986,8 @@ public class VoxelMapScreen extends Screen {
         double scaledX = mouseX / scale;
         double scaledY = mouseY / scale;
         
-        if (super.mouseClicked(event, doubleClick)) return true;
+        net.minecraft.client.input.MouseButtonEvent scaledEvent = new net.minecraft.client.input.MouseButtonEvent(scaledX, scaledY, event.buttonInfo());
+        if (super.mouseClicked(scaledEvent, doubleClick)) return true;
         
         int effectiveWidth = (int)(this.width / scale);
         int effectiveHeight = (int)(this.height / scale);
@@ -1266,9 +1267,8 @@ public class VoxelMapScreen extends Screen {
         
         PoseStack poseStack = new PoseStack();
         poseStack.pushPose();
-        
         // Center on screen
-        poseStack.translate(this.width / 2.0 + panX, this.height / 2.0 + panY, 600);
+        poseStack.translate(this.width / 2.0 + panX, this.height / 2.0 + panY, 0);
         
         // Use shared renderer
         if (!showWaypointModal && !showSettingsModal) {
@@ -1277,18 +1277,12 @@ public class VoxelMapScreen extends Screen {
                     ClientSettings.renderDistance, selectedMapBlock);
         }
         
-        // Clear depth buffer to ensure UI draws cleanly on top of the 3D map
-        // depthMask
-        // clear
-        
         poseStack.popPose();
         
         // Start UI Layer (Higher Z-index to sit above the map)
-        poseStack.pushPose();
-        
-        // Apply HUD Scaling
         float scale = getHudScale();
-        poseStack.scale(scale, scale, 1.0f);
+        graphics.pose().pushMatrix();
+        graphics.pose().scale(scale, scale);
         
         int effectiveWidth = (int)(this.width / scale);
         int effectiveHeight = (int)(this.height / scale);
@@ -1299,8 +1293,6 @@ public class VoxelMapScreen extends Screen {
         // Scale mouse coordinates for UI interaction logic within this frame
         int scaledMouseX = (int)(mouseX / scale);
         int scaledMouseY = (int)(mouseY / scale);
-
-        poseStack.translate(0, 0, 800);
         
         // Draw Bottom Menu Background
         int menuHeight = 35;
@@ -1414,7 +1406,7 @@ public class VoxelMapScreen extends Screen {
             renderModalOverlays(graphics, scaledMouseX, scaledMouseY);
         }
         
-        poseStack.popPose();
+        graphics.pose().popMatrix();
         
         // Render Tooltips (outside scaled context)
         if (!showWaypointModal && !showSettingsModal && toggleNightMode != null && toggleNightMode.isHovered()) {
@@ -1621,8 +1613,7 @@ public class VoxelMapScreen extends Screen {
             int listWidth = modalW - 20;
             
             // Enable Scissor to clip content
-            float scale = getHudScale();
-            graphics.enableScissor((int)(listX * scale), (int)(listY * scale), (int)((listX + listWidth) * scale), (int)((listY + listHeight) * scale));
+            graphics.enableScissor(listX, listY, listX + listWidth, listY + listHeight);
             
             List<ClientSettings.Waypoint> waypoints = getFilteredWaypoints();
             
@@ -1859,9 +1850,9 @@ public class VoxelMapScreen extends Screen {
     private static class ImageToggleButton extends Button.Plain {
         protected final Identifier textureOn;
         protected final Identifier textureOff;
-        protected final Supplier<Boolean> stateSupplier;
+        protected final java.util.function.Supplier<Boolean> stateSupplier;
 
-        public ImageToggleButton(int x, int y, int width, int height, Identifier textureOn, Identifier textureOff, Supplier<Boolean> stateSupplier, OnPress onPress) {
+        public ImageToggleButton(int x, int y, int width, int height, Identifier textureOn, Identifier textureOff, java.util.function.Supplier<Boolean> stateSupplier, Button.OnPress onPress) {
             super(x, y, width, height, Component.empty(), onPress, DEFAULT_NARRATION);
             this.textureOn = textureOn;
             this.textureOff = textureOff;
@@ -1873,54 +1864,40 @@ public class VoxelMapScreen extends Screen {
             boolean isOn = stateSupplier.get();
             Identifier texture = isOn ? textureOn : textureOff;
             
-            // texture texture
-            // enableBlend
-            
-            // Draw background if hovered
-            if (this.isHovered) {
+            if (this.isHovered()) {
                  graphics.fill(getX(), getY(), getX() + width, getY() + height, 0x40FFFFFF);
             }
             
-            // Draw icon centered
             int iconSize = width - 4;
             graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, texture, getX() + 2, getY() + 2, 0, 0, iconSize, iconSize, iconSize, iconSize);
-            // disableBlend
         }
     }
 
     private static class IconTextButton extends Button.Plain {
         private final Identifier icon;
 
-        public IconTextButton(int x, int y, int width, int height, Component message, Identifier icon, OnPress onPress) {
+        public IconTextButton(int x, int y, int width, int height, Component message, Identifier icon, Button.OnPress onPress) {
             super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
             this.icon = icon;
         }
 
         @Override
         protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
-            // Draw background
-            int color = isHovered ? 0xFFFFFFFF : 0xFFAAAAAA;
-            graphics.fill(getX(), getY(), getX() + width, getY() + height, 0x80000000); // Semi-transparent black
-            graphics.outline(getX(), getY(), width, height, color); // Border
+            int color = isHovered() ? 0xFFFFFFFF : 0xFFAAAAAA;
+            graphics.fill(getX(), getY(), getX() + width, getY() + height, 0x80000000);
+            graphics.outline(getX(), getY(), width, height, color);
             
-            // Calculate positions to center content (Icon + Text)
             Font font = Minecraft.getInstance().font;
             int textWidth = font.width(getMessage());
             int iconWidth = 16;
-            int gap = 3; // Small gap
+            int gap = 3;
             int totalContentWidth = iconWidth + gap + textWidth;
             
             int contentX = getX() + (width - totalContentWidth) / 2;
             int iconY = getY() + (height - 16) / 2;
             int textY = getY() + (height - 8) / 2;
             
-            // Draw Icon
-            // texture icon
-            // enableBlend
             graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, icon, contentX, iconY, 0, 0, 16, 16, 16, 16);
-            // disableBlend
-            
-            // Draw Text
             graphics.text(font, getMessage(), contentX + iconWidth + gap, textY, color);
         }
     }

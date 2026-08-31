@@ -44,8 +44,6 @@ public class WorldWaypointRenderer {
 
         Vec3 cameraPos = state.cameraRenderState.pos;
         PoseStack poseStack = new PoseStack();
-        poseStack.mulPose(state.cameraRenderState.viewRotationMatrix);
-
         poseStack.pushPose();
         
         BufferBuilder buf;
@@ -134,8 +132,11 @@ public class WorldWaypointRenderer {
                 float b = (color & 0xFF) / 255.0f;
                 
                 float wInner = 0.2f;
-                VoxelMapRenderer.renderBox(buf, poseStack.last().pose(), rx, bottomY, rz, wInner, (float)beamHeight, wInner, r, g, b, alpha);
+                RenderSystem.getModelViewStack().pushMatrix();
+                RenderSystem.getModelViewStack().mul(state.cameraRenderState.viewRotationMatrix);
+                VoxelMapRenderer.renderBox(buf, new Matrix4f(), rx, bottomY, rz, wInner, (float)beamHeight, wInner, r, g, b, alpha);
                 RenderBufferUtil.drawIfNotEmpty(buf);
+                RenderSystem.getModelViewStack().popMatrix();
             }
 
             double closestDistSq = Double.MAX_VALUE;
