@@ -4,10 +4,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -24,7 +25,7 @@ import com.agustinbenitez.voxelview3d.VoxelView3D;
 import com.agustinbenitez.voxelview3d.client.ClientSettings;
 import com.agustinbenitez.voxelview3d.client.VoxelMapScreen;
 
-@Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
+@EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
 public class WorldHandler {
     private static final int QUEUE_REFRESH_INTERVAL_TICKS = 20;
     private static final int SCAN_INTERVAL_TICKS = 2;
@@ -53,8 +54,7 @@ public class WorldHandler {
     }
 
     @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
+    public static void onClientTick(ClientTickEvent.Post event) {
 
         Minecraft mc = Minecraft.getInstance();
         boolean mapIsOpen = mc.screen instanceof VoxelMapScreen;

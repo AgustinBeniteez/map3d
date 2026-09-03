@@ -3,14 +3,15 @@ package com.agustinbenitez.voxelview3d;
 import com.agustinbenitez.voxelview3d.client.CompassHud;
 import com.agustinbenitez.voxelview3d.client.KeyBindings;
 import com.mojang.logging.LogUtils;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.AddGuiOverlayLayersEvent;
-import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
-import net.minecraftforge.client.gui.overlay.ForgeLayeredDraw;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
-import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
+import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
 import org.slf4j.Logger;
 
 @Mod(VoxelView3D.MODID)
@@ -18,11 +19,11 @@ public class VoxelView3D {
     public static final String MODID = "voxelview3d";
     private static final Logger LOGGER = LogUtils.getLogger();
 
-    public VoxelView3D(FMLJavaModLoadingContext context) {
+    public VoxelView3D(ModContainer container) {
         // Static subscribers below handle all client and mod-bus registration.
     }
 
-    @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+    @EventBusSubscriber(modid = MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
     public static class ClientModEvents {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
@@ -37,9 +38,9 @@ public class VoxelView3D {
         }
 
         @SubscribeEvent
-        public static void registerOverlays(AddGuiOverlayLayersEvent event) {
-            event.getLayeredDraw().add(
-                    ForgeLayeredDraw.POST_SLEEP_STACK,
+        public static void registerOverlays(RegisterGuiLayersEvent event) {
+            event.registerAbove(
+                    VanillaGuiLayers.SLEEP_OVERLAY,
                     net.minecraft.resources.ResourceLocation.fromNamespaceAndPath(MODID, "compass_hud"),
                     CompassHud::render);
         }

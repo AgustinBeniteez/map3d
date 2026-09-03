@@ -7,16 +7,17 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.joml.Matrix4f;
 
 import net.minecraft.resources.ResourceLocation;
 import java.util.*;
 
-@Mod.EventBusSubscriber(modid = "voxelview3d", value = Dist.CLIENT)
+@EventBusSubscriber(modid = "voxelview3d", value = Dist.CLIENT)
 public class WorldWaypointRenderer {
 
     @SubscribeEvent
@@ -27,8 +28,7 @@ public class WorldWaypointRenderer {
         if (mc.player == null || ClientSettings.waypoints.isEmpty()) return;
 
         Vec3 cameraPos = event.getCamera().getPosition();
-        PoseStack poseStack = new PoseStack();
-        poseStack.mulPose(event.getPoseStack());
+        PoseStack poseStack = event.getPoseStack();
 
         poseStack.pushPose();
         

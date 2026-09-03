@@ -2,18 +2,19 @@ package com.agustinbenitez.voxelview3d.client;
 
 import com.agustinbenitez.voxelview3d.VoxelView3D;
 import net.minecraft.client.gui.screens.DeathScreen;
-import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
-import net.minecraftforge.client.event.ScreenEvent;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.common.Mod;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
-@Mod.EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
+@EventBusSubscriber(modid = VoxelView3D.MODID, value = Dist.CLIENT)
 public class WaypointEventHandler {
 
     private static boolean wasDead = false;
@@ -42,7 +43,7 @@ public class WaypointEventHandler {
     public static void onScreenOpen(ScreenEvent.Opening event) {
         if (!ClientSettings.autoDeathPoints) return;
         
-        if (event.getScreen() instanceof DeathScreen && !wasDead) {
+        if (event.getNewScreen() instanceof DeathScreen && !wasDead) {
             Minecraft mc = Minecraft.getInstance();
             if (mc.player != null) {
                 wasDead = true;
@@ -83,13 +84,11 @@ public class WaypointEventHandler {
     }
 
     @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) {
-            Minecraft mc = Minecraft.getInstance();
-            // Reset wasDead flag when player respawns (is alive and no longer in DeathScreen)
-            if (wasDead && mc.player != null && mc.player.isAlive() && !(mc.screen instanceof DeathScreen)) {
-                wasDead = false;
-            }
+    public static void onClientTick(ClientTickEvent.Post event) {
+        Minecraft mc = Minecraft.getInstance();
+        // Reset wasDead flag when player respawns (is alive and no longer in DeathScreen)
+        if (wasDead && mc.player != null && mc.player.isAlive() && !(mc.screen instanceof DeathScreen)) {
+            wasDead = false;
         }
     }
 }
